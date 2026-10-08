@@ -1,9 +1,11 @@
+import { useState } from "react";
 import { Download } from "lucide-react";
 import type { TicketAttachment } from "@symptomsketch/contracts";
 import { Button } from "@/components/ui/button";
 import { mediaUrls } from "@/lib/api";
 import { formatBytes, formatDuration } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useDuckSamWhile } from "./call/CallProvider";
 import { ATTACHMENT_PURPOSE_LABELS, shortHash } from "./labels";
 
 interface AttachmentCardProps {
@@ -14,7 +16,8 @@ interface AttachmentCardProps {
 
 /**
  * One ticket attachment, played inline through the ticket attachment route (which checks ticket +
- * attachment membership) with a download of the exact same bytes.
+ * attachment membership) with a download of the exact same bytes. While the clip plays over a live
+ * Sam call, Sam is ducked so the two do not talk over each other.
  */
 export function AttachmentCard({ ticketId, attachment, className }: AttachmentCardProps) {
   const label = ATTACHMENT_PURPOSE_LABELS[attachment.purpose];
@@ -22,6 +25,8 @@ export function AttachmentCard({ ticketId, attachment, className }: AttachmentCa
   const href = mediaUrls.ticketAttachmentDownload(ticketId, attachment.assetId);
   const isVideo = attachment.mime.startsWith("video/");
   const isImage = attachment.mime.startsWith("image/");
+  const [playing, setPlaying] = useState(false);
+  useDuckSamWhile(playing);
 
   return (
     <figure className={cn("flex flex-col gap-3 rounded-xl border bg-surface-2 p-3", className)}>
@@ -33,6 +38,9 @@ export function AttachmentCard({ ticketId, attachment, className }: AttachmentCa
           playsInline
           preload="metadata"
           aria-label={`${label}: ${attachment.filename}`}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onEnded={() => setPlaying(false)}
         />
       ) : isImage ? (
         <img
