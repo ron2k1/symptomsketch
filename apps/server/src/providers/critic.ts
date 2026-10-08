@@ -23,6 +23,8 @@ import {
 export const CRITIC_PROMPT_VERSION = "critic-v2";
 /** Seconds in from each end of the final MP4 where the first / last stills are cut. */
 export const CRITIC_KEYFRAME_EDGE_S = 0.25;
+/** Stills keep the final's resolution (finals are at most 1280 wide; never upscaled). */
+export const CRITIC_KEYFRAME_MAX_W = 1920;
 export const CRITIC_TIMEOUT_MS = 90_000;
 /** Allowed overshoot (seconds) of a reported time range past the real duration before rejecting. */
 export const CRITIC_TIME_TOLERANCE_S = 0.25;

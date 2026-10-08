@@ -21,6 +21,7 @@ import { AppError } from "../http/errors.ts";
 import { extractThumbnail } from "../media/ffmpeg.ts";
 import {
   CRITIC_KEYFRAME_EDGE_S,
+  CRITIC_KEYFRAME_MAX_W,
   CRITIC_PROMPT_VERSION,
   CriticOutputError,
   runCritic,
@@ -56,8 +57,17 @@ async function cutKeyframes(
     const last = path.join(dir, "last.jpg");
     await writeFile(src, bytes);
     const end = Math.max(0, durationSeconds - CRITIC_KEYFRAME_EDGE_S);
-    await extractThumbnail(ctx.config.ffmpegPath, src, first, CRITIC_KEYFRAME_EDGE_S, signal);
-    await extractThumbnail(ctx.config.ffmpegPath, src, last, end, signal);
+    // Native resolution: at the 480 px shelf size the critic misread the heading (live take).
+    const ffmpeg = ctx.config.ffmpegPath;
+    await extractThumbnail(
+      ffmpeg,
+      src,
+      first,
+      CRITIC_KEYFRAME_EDGE_S,
+      signal,
+      CRITIC_KEYFRAME_MAX_W,
+    );
+    await extractThumbnail(ffmpeg, src, last, end, signal, CRITIC_KEYFRAME_MAX_W);
     return { first: await readFile(first), last: await readFile(last) };
   } catch {
     return null;

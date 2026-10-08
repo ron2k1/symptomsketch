@@ -208,8 +208,13 @@ export function retryBitrateKbps(durationSeconds: number): number {
   return Math.max(ENCODE_POLICY.retryMinKbps, kbps);
 }
 
-/** Single JPEG frame from the final MP4 for the take shelf. */
-export function buildThumbnailArgs(input: string, output: string, atSeconds: number): string[] {
+/** Single JPEG frame from the final MP4 (take shelf by default; never upscaled). */
+export function buildThumbnailArgs(
+  input: string,
+  output: string,
+  atSeconds: number,
+  maxWidth: number = ENCODE_POLICY.thumbnailWidth,
+): string[] {
   return [
     "-hide_banner",
     "-nostdin",
@@ -223,7 +228,7 @@ export function buildThumbnailArgs(input: string, output: string, atSeconds: num
     "-frames:v",
     "1",
     "-vf",
-    `scale=w='min(${ENCODE_POLICY.thumbnailWidth},iw)':h=-2`,
+    `scale=w='min(${maxWidth},iw)':h=-2`,
     "-q:v",
     "4",
     "-f",
@@ -248,8 +253,9 @@ export async function extractThumbnail(
   output: string,
   atSeconds: number,
   signal?: AbortSignal,
+  maxWidth?: number,
 ): Promise<void> {
-  await runMediaTool(ffmpegPath, buildThumbnailArgs(input, output, atSeconds), {
+  await runMediaTool(ffmpegPath, buildThumbnailArgs(input, output, atSeconds, maxWidth), {
     signal,
     maxStdoutBytes: 64 * 1024,
   });
