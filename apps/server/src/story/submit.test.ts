@@ -267,6 +267,9 @@ test("migration 5 rebuilds tickets without cascading into attachments or stories
   const before = [count(attachments), count(stories)];
   assert.ok(before[0]! > 0);
   assert.equal(before[1], 1);
+  // Back to a v4 database: drop migration 6's columns so the replay re-adds them.
+  db.exec("ALTER TABLE reviews DROP COLUMN override_reason");
+  db.exec("ALTER TABLE reviews DROP COLUMN override_check_status");
   db.exec("PRAGMA user_version = 4");
   assert.equal(runMigrations(db), MIGRATIONS.length);
   assert.deepEqual([count(attachments), count(stories)], before);

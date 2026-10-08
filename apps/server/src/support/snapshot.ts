@@ -175,6 +175,15 @@ export function buildSnapshot(input: SnapshotInput): {
     assessmentSummary: assessment.summary,
     reviewState: take.review_state,
     uncertaintyNote: review.uncertainty_note,
+    criticOverride:
+      review.override_check_status === "needs_revision"
+        ? {
+            checkStatus: "needs_revision",
+            reason: review.override_reason,
+            overriddenByRole: review.reviewer_role,
+            overriddenAt: review.created_at,
+          }
+        : null,
     message,
     submittedAt,
   };

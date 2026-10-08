@@ -8,6 +8,7 @@ import {
   REVIEW_STATE_LABELS,
   SUPPORT_CALL_AGENT_NAME,
   SUPPORT_CALL_PERSONA_OPENER,
+  type CriticOverride,
   type StoryBeatsUpload,
   type SupportCallPackage,
 } from "@symptomsketch/contracts";
@@ -37,6 +38,7 @@ export const CALL_GROUND_RULES = [
 ].join(" ");
 
 const PERSONA_BODY_MAX = LIMITS.supportCallPersonaMaxChars - CALL_GROUND_RULES.length - 2;
+const FLAG_REASON_MAX = 400;
 
 /**
  * Vidu S2 Avatar hands start_call.greeting to the character's LLM as its first cue rather than
@@ -154,17 +156,38 @@ export function callFacts(ctx: AppContext, ticket: TicketRow): Record<string, un
     visualCheckSummary: s.assessmentSummary,
     customerReview: REVIEW_STATE_LABELS[s.reviewState],
     customerUncertaintyNote: s.uncertaintyNote,
+    customerSentFlaggedClip: s.criticOverride
+      ? { visualCheck: ASSESSMENT_LABELS.needs_revision, reason: s.criticOverride.reason }
+      : null,
     unresolved: s.unresolved,
     customerMessage: s.message,
   };
 }
 
+/**
+ * Server-written line for a clip the customer sent although the automated Gemini check flagged it
+ * needs_revision, so the agent asks about it instead of treating the clip as confirmed.
+ */
+export function flaggedClipNote(override: CriticOverride | null | undefined): string | null {
+  if (!override) return null;
+  const reason = override.reason?.trim()
+    ? ` The check said: ${clipAtSentence(override.reason.trim(), FLAG_REASON_MAX)}`
+    : " The check did not record a reason.";
+  return `Flagged clip: the automated Gemini visual check marked this clip as needing revision, and the customer chose to send it anyway.${reason} Do not treat the clip as confirmed. Early in the call, tell the customer the automated check flagged a difference, and ask them which part of the clip differs from what really happened.`;
+}
+
 /** Enforce the opener, the length caps, the ground rules and the greeting cue on Gemini's text. */
-export function finalizePackage(raw: { persona: string; greeting: string }): SupportCallPackage {
+export function finalizePackage(
+  raw: { persona: string; greeting: string },
+  override?: CriticOverride | null,
+): SupportCallPackage {
   let body = raw.persona.trim();
   if (!body.startsWith(SUPPORT_CALL_PERSONA_OPENER))
     body = `${SUPPORT_CALL_PERSONA_OPENER}. ${body}`;
-  body = clipAtSentence(body, PERSONA_BODY_MAX);
+  const flag = flaggedClipNote(override);
+  body = flag
+    ? `${clipAtSentence(body, PERSONA_BODY_MAX - flag.length - 2)}\n\n${flag}`
+    : clipAtSentence(body, PERSONA_BODY_MAX);
   const line = clipAtSentence(raw.greeting.trim().replaceAll('"', "'"), GREETING_LINE_MAX);
   const greeting = `${GREETING_CUE_PREFIX}${line}"`;
   return { persona: `${body}\n\n${CALL_GROUND_RULES}`, greeting };
@@ -247,7 +270,8 @@ async function writePackage(
       console.log(
         `[support-call] brief written ticket=${ticket.id} model=${result.modelId} ms=${result.latencyMs}`,
       );
-      return { pkg: finalizePackage(result.data), modelId: result.modelId };
+      const override = parseSnapshot(ticket).criticOverride;
+      return { pkg: finalizePackage(result.data, override), modelId: result.modelId };
     } catch (err) {
       lastError = err;
       const malformed =

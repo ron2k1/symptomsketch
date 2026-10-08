@@ -25,7 +25,8 @@ export function getTake(db: Db, takeId: string): TakeRow | undefined {
 export function getLatestReview(db: Db, takeId: string): ReviewRow | undefined {
   return getRow<ReviewRow>(
     db,
-    `SELECT id, take_id, final_sha256, decision, resulting_state, uncertainty_note, created_at
+    `SELECT id, take_id, final_sha256, decision, resulting_state, uncertainty_note, created_at,
+            reviewer_role, override_check_status, override_reason
      FROM reviews WHERE take_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
     takeId,
   );

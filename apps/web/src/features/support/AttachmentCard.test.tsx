@@ -48,5 +48,27 @@ describe("AttachmentCard", () => {
   it("renders without a call provider (staff pages)", () => {
     render(<AttachmentCard ticketId="tkt_1" attachment={clip} />);
     expect(screen.getByRole("link", { name: /Download/ })).toBeTruthy();
+    expect(screen.queryByText("Gemini check: needs revision")).toBeNull();
+  });
+
+  it("shows the needs-revision badge with the critic's reason on a flagged clip", () => {
+    const override = {
+      checkStatus: "needs_revision" as const,
+      reason: "The clip shows the vacuum stopping; the customer said it keeps spinning.",
+      overriddenByRole: "customer" as const,
+      overriddenAt: "2026-10-08T12:00:00.000Z",
+    };
+    render(<AttachmentCard ticketId="tkt_1" attachment={clip} criticOverride={override} />);
+    expect(screen.getByText("Gemini check: needs revision")).toBeTruthy();
+    expect(screen.getByText(override.reason)).toBeTruthy();
+    cleanup();
+    render(
+      <AttachmentCard
+        ticketId="tkt_1"
+        attachment={{ ...clip, purpose: "customer_reference", mime: "image/jpeg" }}
+        criticOverride={override}
+      />,
+    );
+    expect(screen.queryByText("Gemini check: needs revision")).toBeNull();
   });
 });

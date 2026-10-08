@@ -344,6 +344,11 @@ DROP TABLE tickets;
 ALTER TABLE tickets_v5 RENAME TO tickets;
 CREATE INDEX idx_tickets_status ON tickets(status, created_at);
 `,
+  /* 6: a customer accept that overrode a needs_revision critic verdict, with the critic's reason */ `
+ALTER TABLE reviews ADD COLUMN override_check_status TEXT
+  CHECK (override_check_status IS NULL OR override_check_status = 'needs_revision');
+ALTER TABLE reviews ADD COLUMN override_reason TEXT;
+`,
 ];
 
 /** Apply pending migrations inside one transaction each. Returns the resulting schema version. */
