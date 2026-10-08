@@ -15,3 +15,4 @@ export * from "./takes.ts";
 export * from "./tickets.ts";
 export * from "./cases.ts";
 export * from "./api.ts";
+export * from "./story.ts";
