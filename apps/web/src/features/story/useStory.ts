@@ -15,6 +15,7 @@ import {
   clipList,
   clipOf,
   numberOf,
+  reactorFailure,
   type FastH3Message,
   type FastH3Status,
 } from "./fast-h3";
@@ -329,7 +330,7 @@ export function useStory(caseId: string, photoUrl: string | null) {
       const message =
         err instanceof Error && (err.message === "director" || err.message === "enqueue")
           ? "The story could not start: FastH3 or the director did not answer."
-          : errorMessage(err);
+          : (reactorFailure(err) ?? errorMessage(err));
       fail(message, () => void start());
     }
   }, [caseId, photoUrl, dispatch, enqueueBranches, fail, onMessage, setPhaseBoth, teardown]);

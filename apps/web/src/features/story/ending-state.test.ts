@@ -13,7 +13,8 @@ import {
   type EndingSession,
   type EndingState,
 } from "./ending-state";
-import type { EnqueueParams } from "./fast-h3";
+import { ReactorError } from "@reactor-team/js-sdk";
+import { reactorFailure, type EnqueueParams } from "./fast-h3";
 
 // Labeled stubs only (test fixtures, never shown by the live app).
 const scene = (n: number) => ({
@@ -205,5 +206,24 @@ describe("launchEnding (the live sequence, with stub API and session)", () => {
       ),
     ).rejects.toBeInstanceOf(EndingLaunchError);
     expect(b.enqueued).toHaveLength(1);
+  });
+});
+
+describe("reactorFailure (SDK errors shown by code, never by provider message)", () => {
+  it("names a rate limit plainly and other failures by step and code", () => {
+    const limited = new ReactorError("STUB provider text", {
+      code: "RATE_LIMITED",
+      operation: "connect",
+    });
+    expect(reactorFailure(limited)).toMatch(/busy right now/);
+    const other = new ReactorError("STUB provider text", {
+      code: "TRANSPORT",
+      operation: "connect",
+    });
+    expect(reactorFailure(other)).toBe(
+      "The FastH3 connect step failed (TRANSPORT). Retry in a moment.",
+    );
+    expect(reactorFailure(other)).not.toContain("STUB provider text");
+    expect(reactorFailure(new Error("x"))).toBeNull();
   });
 });

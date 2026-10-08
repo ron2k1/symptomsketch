@@ -2,7 +2,7 @@
 // reactor/fast-h3; docs/providers/reactor-fast-h3.md). Owns the Reactor client, the single
 // MediaStream (main_video + main_audio) and the message normalization. One instance per token:
 // disconnect() ends the session for good, there is no reconnect loop.
-import { Reactor, type FileRef, type ReactorMessage } from "@reactor-team/js-sdk";
+import { Reactor, ReactorError, type FileRef, type ReactorMessage } from "@reactor-team/js-sdk";
 import { FAST_H3_MODEL_NAME } from "@symptomsketch/contracts";
 import type { ClipRecord } from "./story-state";
 
@@ -66,6 +66,19 @@ export function clipList(v: unknown): ClipRecord[] {
   return Array.isArray(v)
     ? v.map((x) => clipOf(asObject(x))).filter((c): c is ClipRecord => !!c)
     : [];
+}
+
+/**
+ * Honest copy for a Reactor SDK failure (connect, upload, command), from its code and operation
+ * only; never the provider message. Null when `err` is not an SDK error.
+ */
+export function reactorFailure(err: unknown): string | null {
+  if (!(err instanceof ReactorError)) return null;
+  if (err.code === "RATE_LIMITED") {
+    return "Reactor is busy right now (too many sessions at once). Retry in a moment.";
+  }
+  const step = err.operation ?? "session";
+  return `The FastH3 ${step} step failed (${err.code}). Retry in a moment.`;
 }
 
 export function numberOf(v: unknown): number | null {

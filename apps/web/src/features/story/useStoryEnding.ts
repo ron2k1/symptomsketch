@@ -16,7 +16,14 @@ import {
   type EndingEvent,
   type EndingState,
 } from "./ending-state";
-import { FastH3Session, clipList, clipOf, type FastH3Message, type FastH3Status } from "./fast-h3";
+import {
+  FastH3Session,
+  clipList,
+  clipOf,
+  reactorFailure,
+  type FastH3Message,
+  type FastH3Status,
+} from "./fast-h3";
 import { fetchMedia, getEndingToken, writeEnding } from "./story-api";
 
 /** After the last scene finishes: let the held frame reach the screen and the recorder. */
@@ -184,7 +191,7 @@ export function useStoryEnding(ticketId: string, frameUrl: string | null) {
         fail(
           err instanceof EndingLaunchError
             ? "FastH3 did not accept the ending scenes."
-            : errorMessage(err),
+            : (reactorFailure(err) ?? errorMessage(err)),
           text,
         );
       }
