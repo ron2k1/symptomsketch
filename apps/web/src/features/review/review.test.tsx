@@ -1,5 +1,5 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   REVIEW_ACTION_LABELS,
   type AssessmentUiStatus,
@@ -7,6 +7,7 @@ import {
   type Take,
   type TakeAssessment,
 } from "@symptomsketch/contracts";
+import { ExportPanel } from "./ExportPanel";
 import { ReviewActions } from "./ReviewActions";
 import { needsPolling } from "./useTakePolling";
 
@@ -167,5 +168,47 @@ describe("needsPolling", () => {
   it("waits a bounded grace period for the check to appear", () => {
     expect(needsPolling(take(), now + 10_000)).toBe(true);
     expect(needsPolling(take(), now + 120_000)).toBe(false);
+  });
+});
+
+describe("ExportPanel", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("retries the email explanation after a failed load instead of leaving Copy dead", async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        calls += 1;
+        if (calls === 1) throw new TypeError("network down");
+        const body = {
+          takeId: "take_1",
+          subject: "Subj",
+          body: "Body",
+          attachmentFilename: "x.mp4",
+        };
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+    render(
+      <ExportPanel
+        take={take({ reviewState: "accepted" })}
+        original={null}
+        continueLabel="Continue to Support"
+        onContinue={noop}
+        announce={noop}
+      />,
+    );
+    expect(await screen.findByText("Could not reach the server.")).toBeTruthy();
+    const copy = screen.getByRole("button", { name: /Copy email explanation/ });
+    expect((copy as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: /Retry/ }));
+    await waitFor(() => expect((copy as HTMLButtonElement).disabled).toBe(false));
+    expect((screen.getByLabelText(/Email explanation/) as HTMLTextAreaElement).value).toBe(
+      "Subject: Subj\n\nBody",
+    );
   });
 });

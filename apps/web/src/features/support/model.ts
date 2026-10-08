@@ -52,6 +52,23 @@ export function resolveSupportTake(
   return { kind: "none" };
 }
 
+/**
+ * The take to open in Recreate when nothing can be sent yet: the selected one, else the newest
+ * saved problem take that finished exporting. Null when there is nothing saved to review.
+ */
+export function takeToReview(
+  caseData: Pick<CaseDetail, "takes">,
+  selectedTakeId: string | null,
+): Take | null {
+  const selected = selectedTakeId ? caseData.takes.find((t) => t.id === selectedTakeId) : undefined;
+  if (selected) return selected;
+  const saved = caseData.takes.filter(
+    (t) =>
+      t.purpose === "problem" && t.captureStatus === "complete" && t.processingState === "ready",
+  );
+  return saved.sort((a, b) => b.number - a.number)[0] ?? null;
+}
+
 /** The product revision frozen on a take (older takes keep their own reference). */
 export function productForTake(
   caseData: Pick<CaseDetail, "products" | "product">,

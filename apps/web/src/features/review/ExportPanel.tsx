@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Copy, Download, LoaderCircle } from "lucide-react";
+import { ArrowRight, Copy, Download, LoaderCircle, RefreshCw } from "lucide-react";
 import type { MediaAsset, Take } from "@symptomsketch/contracts";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -32,6 +32,7 @@ export function ExportPanel({
 }: ExportPanelProps) {
   const [text, setText] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
   const [copyState, setCopyState] = useState<CopyState>("idle");
   const areaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -47,7 +48,12 @@ export function ExportPanel({
     return () => {
       active = false;
     };
-  }, [take.id]);
+  }, [take.id, reloadToken]);
+
+  function retryLoad() {
+    setLoadError(null);
+    setReloadToken((n) => n + 1);
+  }
 
   async function copy() {
     if (text === null) return;
@@ -100,7 +106,15 @@ export function ExportPanel({
             <LoaderCircle className="size-4 animate-spin" aria-hidden /> Preparing the explanation
           </p>
         ) : null}
-        {loadError ? <p className="text-sm text-destructive">{loadError}</p> : null}
+        {loadError ? (
+          <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive">
+            {loadError}
+            <Button type="button" variant="outline" size="sm" onClick={retryLoad}>
+              <RefreshCw aria-hidden />
+              Retry
+            </Button>
+          </div>
+        ) : null}
         {text !== null ? (
           <Textarea
             id={`email-${take.id}`}

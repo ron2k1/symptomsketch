@@ -195,9 +195,16 @@ export function SupportCall({ ticketId, onEnded }: SupportCallProps) {
             {idle ? SUPPORT_CALL_COPY.start : view.error ? "Retry" : "Talk to support again"}
           </Button>
           {elsewhere ? (
-            <p role="status" className="text-sm text-muted-foreground">
-              A call with {SUPPORT_CALL_AGENT_NAME} is running on another ticket. End it first.
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p role="status" className="text-sm text-muted-foreground">
+                A call with {SUPPORT_CALL_AGENT_NAME} is running on another ticket.
+              </p>
+              {/* Same End call as the dock: that call's transcript is still saved to its ticket. */}
+              <Button type="button" variant="outline" className="min-h-11" onClick={call.end}>
+                <PhoneOff aria-hidden />
+                End that call
+              </Button>
+            </div>
           ) : null}
           {idle && prep.view.ticketId === ticketId && prepText ? (
             <p

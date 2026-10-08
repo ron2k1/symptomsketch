@@ -8,6 +8,7 @@ import {
   isTerminalError,
   mergeTickets,
   resolveSupportTake,
+  takeToReview,
   ticketForTake,
 } from "./model";
 
@@ -80,6 +81,16 @@ describe("support take resolution", () => {
   it("asks the user to choose when nothing is selected, and prompts Recreate when none exist", () => {
     expect(resolveSupportTake(caseData, null).kind).toBe("choose");
     expect(resolveSupportTake({ takes: [unsure] }, null).kind).toBe("none");
+  });
+
+  it("points Recreate at the selected take, else the newest saved problem take", () => {
+    expect(takeToReview(caseData, "take_i")?.id).toBe("take_i");
+    const older = take({ id: "take_o", number: 1, reviewState: "rejected" });
+    const failed = take({ id: "take_f", number: 9, processingState: "failed" });
+    expect(takeToReview({ takes: [older, unsure, incomplete, failed, solution] }, null)?.id).toBe(
+      "take_u",
+    );
+    expect(takeToReview({ takes: [incomplete, solution] }, null)).toBeNull();
   });
 
   it("lists accepted takes per purpose, newest first", () => {

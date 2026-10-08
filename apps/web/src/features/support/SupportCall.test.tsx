@@ -1,11 +1,13 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CallProvider } from "./call/CallProvider";
+import { CallProvider, useSupportCall } from "./call/CallProvider";
 import { SupportCall } from "./SupportCall";
 import { bodiesOf, mockApi } from "./test-fixtures";
 
 // The Reactor SDK needs WebRTC + wasm, so the controller is replaced by one that "runs" a call and
 // ends it at once: this test covers what the component does after end_call + disconnect.
+// With fake.holdOpen the call stays live until end(), to cover a call running on another ticket.
+const fake = vi.hoisted(() => ({ holdOpen: false }));
 vi.mock("./support-call-controller", async (importOriginal) => {
   const real = await importOriginal<typeof import("./support-call-controller")>();
   class FakeController {
@@ -16,7 +18,14 @@ vi.mock("./support-call-controller", async (importOriginal) => {
     get busy() {
       return false;
     }
+    async end() {
+      this.onView({ ...real.INITIAL_CALL_VIEW, phase: "ended" });
+    }
     async start() {
+      if (fake.holdOpen) {
+        this.onView({ ...real.INITIAL_CALL_VIEW, phase: "live" });
+        return;
+      }
       this.onView({ ...real.INITIAL_CALL_VIEW, phase: "ended", elapsedSeconds: 31 });
       this.onEnded?.({
         lines: [
@@ -32,10 +41,38 @@ vi.mock("./support-call-controller", async (importOriginal) => {
   return { ...real, SupportCallController: FakeController };
 });
 
+function StartOtherCall() {
+  const call = useSupportCall();
+  return (
+    <button type="button" onClick={() => call.start("tkt_2")}>
+      Start other call
+    </button>
+  );
+}
+
 describe("SupportCall", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    fake.holdOpen = false;
+  });
+
+  it("offers to end a call running on another ticket instead of a dead Start button", async () => {
+    fake.holdOpen = true;
+    mockApi({});
+    render(
+      <CallProvider>
+        <StartOtherCall />
+        <SupportCall ticketId="tkt_1" />
+      </CallProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Start other call" }));
+    const end = await screen.findByRole("button", { name: "End that call" });
+    const talk = screen.getByRole("button", { name: /Talk to support now/ }) as HTMLButtonElement;
+    expect(talk.disabled).toBe(true);
+    fireEvent.click(end);
+    await waitFor(() => expect(talk.disabled).toBe(false));
+    expect(screen.queryByRole("button", { name: "End that call" })).toBeNull();
   });
 
   it("adds the ended call's transcript to the ticket and says so", async () => {

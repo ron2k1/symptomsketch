@@ -3,6 +3,9 @@ import type { ReviewState, TicketAttachmentPurpose, TicketStatus } from "@sympto
 /** Shown on the customer Support tab (spec 5): honest scope of the demo queue. */
 export const SUPPORT_NOTICE = "Demo support inbox · No manufacturer is contacted.";
 
+/** DOM id of the customer's Send to Demo Support button, so other panels can jump to it. */
+export const SUPPORT_SEND_BUTTON_ID = "support-send-ticket";
+
 /** Staff header on /support and /support/tickets/:id (next to the BrandLogo wordmark). */
 export const STAFF_HEADER_AREA = "Demo Support workspace";
 
