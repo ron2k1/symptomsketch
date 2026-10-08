@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { errorMessage, getTicket, isApiClientError } from "@/lib/api";
 import { useDocumentTitle } from "@/lib/document-title";
 import { DemonstrationPanel } from "./DemonstrationPanel";
+import { TicketStorySection } from "@/features/story/TicketStorySection";
 import { isAuthError, isTerminalError } from "./model";
 import { ReplyComposer } from "./ReplyComposer";
 import { ReplyThread } from "./ReplyThread";
@@ -62,7 +63,10 @@ function TicketWorkspace({ ticketId, onAuthLost }: { ticketId: string; onAuthLos
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-      <TicketSnapshotPanel ticket={ticket} />
+      <div className="flex min-w-0 flex-col gap-5">
+        <TicketSnapshotPanel ticket={ticket} />
+        <TicketStorySection ticketId={ticket.id} />
+      </div>
       <div className="flex min-w-0 flex-col gap-5">
         <section aria-labelledby="staff-thread-title" className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-2">
