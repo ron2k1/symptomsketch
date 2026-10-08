@@ -36,5 +36,24 @@ export const CreateReviewRequest = z.object({
   assessmentId: Id.nullable(),
   uncertaintyNote: z.string().min(1).max(LIMITS.reviewNoteMaxChars).nullable(),
   idempotencyKey: ClientRequestId,
+  /**
+   * Explicit customer override: accept a problem clip the critic flagged needs_revision so it can
+   * be sent to support with the flag attached. The server rejects it for any other check status,
+   * and never changes the verdict.
+   */
+  overrideCriticFlag: z.boolean().optional(),
 });
 export type CreateReviewRequest = z.infer<typeof CreateReviewRequest>;
+
+/**
+ * Stored when a customer sends a clip the critic flagged needs_revision. Carried on the ticket
+ * snapshot so support staff and the AI call agent see that the clip was flagged, and why.
+ */
+export const CriticOverride = z.object({
+  checkStatus: z.literal("needs_revision"),
+  /** The critic's own summary of what it found, verbatim from the bound assessment. */
+  reason: z.string().nullable(),
+  overriddenByRole: Role,
+  overriddenAt: Timestamp,
+});
+export type CriticOverride = z.infer<typeof CriticOverride>;

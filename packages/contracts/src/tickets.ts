@@ -10,6 +10,7 @@ import {
   Timestamp,
 } from "./common.ts";
 import { LIMITS } from "./limits.ts";
+import { CriticOverride } from "./reviews.ts";
 import { SupportCallTranscript } from "./support-call.ts";
 
 export const TicketStatus = z.enum(["submitted", "replied", "revoked"]);
@@ -61,6 +62,8 @@ export const TicketSnapshot = z.object({
   assessmentSummary: z.string().nullable(),
   reviewState: ReviewState,
   uncertaintyNote: z.string().nullable(),
+  /** Set when the customer sent a clip the critic flagged needs_revision (additive field). */
+  criticOverride: CriticOverride.nullable().optional(),
   /** The customer's edited message as sent. */
   message: z.string(),
   submittedAt: Timestamp,
