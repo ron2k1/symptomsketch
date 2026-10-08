@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useDocumentTitle } from "@/lib/document-title";
 import { LandingPage } from "@/features/landing/LandingPage";
+import { CallDock } from "@/features/support/call/CallDock";
 import { CallProvider } from "@/features/support/call/CallProvider";
 
 // Heavy routes load on demand so the landing chunk stays small. The case workspace pulls in the
@@ -56,6 +57,7 @@ export function App() {
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
+          <CallDock />
         </CallProvider>
         <Toaster theme="dark" position="bottom-right" />
       </TooltipProvider>
