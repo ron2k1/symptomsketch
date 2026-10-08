@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { getSession } from "@/lib/api";
+import { createSession, getSession } from "@/lib/api";
 import { AccessCodeDialog } from "./AccessCodeDialog";
 import { hasCustomerAccess, isAccessError } from "./access";
+
+/**
+ * Open-demo build for judges: the customer code is set only at build time (never committed), and
+ * visitors are signed in with it instead of typing it. Unset in normal builds, which ask as before.
+ */
+const OPEN_DEMO_CODE: string = import.meta.env.VITE_OPEN_DEMO_CODE ?? "";
 
 export type AccessOutcome<T> = { granted: true; value: T } | { granted: false };
 
@@ -51,6 +57,13 @@ export function useCustomerAccess(): CustomerAccess {
           if (hasCustomerAccess(await getSession())) return true;
         } catch (err) {
           if (!isAccessError(err)) throw err;
+        }
+      }
+      if (OPEN_DEMO_CODE) {
+        try {
+          if (hasCustomerAccess(await createSession(OPEN_DEMO_CODE))) return true;
+        } catch {
+          // Fall back to the code sheet.
         }
       }
       return askForCode(context);
