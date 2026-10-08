@@ -1,4 +1,3 @@
-import { Play } from "lucide-react";
 import type { ReactNode } from "react";
 import { ReactorMark } from "@/components/ReactorMark";
 import { cn } from "@/lib/utils";
@@ -10,7 +9,8 @@ import { EXAMPLE_WORKSPACE } from "./landing-content";
  * The frame shows the real demo photo Reactor X2 starts from; no provider session starts here.
  */
 export function ExampleWorkspace() {
-  const { image, productName, sourceCaption, whatHappened, clipDuration } = EXAMPLE_WORKSPACE;
+  const { image, productName, sourceCaption, whatHappened, clipCardLabel, clipCardNote } =
+    EXAMPLE_WORKSPACE;
   return (
     <figure className="relative mx-auto w-full max-w-4xl md:px-10 md:pb-10">
       <div className="holo-tray p-3 sm:p-6">
@@ -51,26 +51,18 @@ export function ExampleWorkspace() {
           </span>
         </FloatCard>
         <FloatCard
-          label="A clip you can share"
-          badge={<ReactorMark size="sm" variant="soft" />}
+          label={clipCardLabel}
           className="md:absolute md:bottom-0 md:left-1/2 md:w-72 md:-translate-x-1/2"
         >
-          <span className="relative block overflow-hidden rounded-lg">
-            <img
-              src={image.src}
-              alt=""
-              width={image.width}
-              height={image.height}
-              decoding="async"
-              className="aspect-[5/2] w-full object-cover"
-            />
-            <span className="absolute top-1/2 left-3 grid size-8 -translate-y-1/2 place-items-center rounded-full bg-surface shadow-[var(--glow)]">
-              <Play aria-hidden className="size-3.5 fill-foreground text-foreground" />
-            </span>
-            <span className="absolute right-2 bottom-2 rounded-md bg-foreground/70 px-1.5 py-0.5 text-[11px] font-medium text-background">
-              {clipDuration}
-            </span>
-          </span>
+          <img
+            src={image.src}
+            alt=""
+            width={image.width}
+            height={image.height}
+            decoding="async"
+            className="aspect-[5/2] w-full rounded-lg object-cover"
+          />
+          <span className="text-[12.5px] text-muted-foreground">{clipCardNote}</span>
         </FloatCard>
       </div>
     </figure>

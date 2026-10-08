@@ -36,7 +36,8 @@ export const EXAMPLE_WORKSPACE = {
   productName: "Robot vacuum",
   sourceCaption: "starts from your photo",
   whatHappened: { before: "It jerks ", marks: ["backward", "once"], after: "." },
-  clipDuration: "0:06",
+  clipCardLabel: "Then: a clip you can share",
+  clipCardNote: "Illustration of the flow. This is the example photo, not a generated clip.",
 } as const;
 
 export const UPLOAD_PRODUCT_ID = "upload-photo";
