@@ -72,8 +72,9 @@ export function SupportLoginCard({ signIn, customerSession, expired }: SupportLo
       ) : null}
       {customerSession ? (
         <p className="mt-4 text-sm text-muted-foreground">
-          This browser has a customer session. Use a separate browser profile for the staff side so
-          the two roles stay apart.
+          This window is signed in as a customer, and both roles share one session. Signing in here
+          signs the customer out. To keep both, open this page in a second Incognito (private)
+          window and sign in there.
         </p>
       ) : null}
       <form className="mt-6 flex flex-col gap-3" onSubmit={onSubmit} noValidate>

@@ -6,6 +6,9 @@ export const SUPPORT_NOTICE = "Demo support inbox · No manufacturer is contacte
 /** Staff header on /support and /support/tickets/:id (next to the BrandLogo wordmark). */
 export const STAFF_HEADER_AREA = "Demo Support workspace";
 
+/** DOM id of the "Reply with a demonstration" button, so the reply box can send focus to it. */
+export const DEMO_CREATE_BUTTON_ID = "demo-panel-create";
+
 /** Status copy the customer sees. "Received" only ever renders from a server-returned ticket. */
 export const CUSTOMER_TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
   submitted: "Received by Demo Support",
