@@ -22,6 +22,8 @@ export interface StageControlsProps {
   clipHint: string | null;
   canReplay: boolean;
   notice: string | null;
+  /** Why the product is not moved on the source (motion guide); `onRetry` asks Gemini again. */
+  guideNotice?: { text: string; onRetry: (() => void) | null } | null;
   /** Live Reactor X2 readout; null hides it. */
   readout: StageStatsProps | null;
   onStart(): void;
@@ -71,6 +73,24 @@ export function StageControls(p: StageControlsProps) {
           >
             <X className="size-4" aria-hidden />
           </button>
+        </div>
+      )}
+
+      {p.guideNotice && (
+        <div
+          data-motion-guide-notice=""
+          className="flex items-start justify-between gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2 text-[13px] text-muted-foreground"
+        >
+          <span>{p.guideNotice.text}</span>
+          {p.guideNotice.onRetry && (
+            <button
+              type="button"
+              className="shrink-0 rounded font-medium text-foreground underline-offset-2 hover:underline"
+              onClick={p.guideNotice.onRetry}
+            >
+              Retry
+            </button>
+          )}
         </div>
       )}
 

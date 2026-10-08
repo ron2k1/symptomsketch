@@ -13,6 +13,8 @@ export interface StageScreenProps {
   /** Live output is current for the shown run (otherwise the reference covers the frozen video). */
   showLiveVideo: boolean;
   isLive: boolean;
+  /** The app is moving the Gemini-found product on the X2 source (shows the honesty label). */
+  motionGuide?: boolean;
   /** Saved take mode: its final MP4 replaces the live player. */
   take: {
     id: string;
@@ -112,6 +114,14 @@ export function StageScreen(p: StageScreenProps) {
                 <Pill tone="muted">Reference</Pill>
               )}
               {p.isLive && <Pill tone="muted">{p.purposeLabel}</Pill>}
+              {p.isLive && p.motionGuide && (
+                <span
+                  data-motion-guide=""
+                  className="rounded-full bg-surface/85 px-2.5 py-1 font-reactor text-[11px] font-semibold tracking-[0.06em] whitespace-nowrap text-muted-foreground uppercase"
+                >
+                  Motion guide · Gemini found the product · the app moves it · Reactor X2 renders it
+                </span>
+              )}
             </div>
             {recPill}
           </div>

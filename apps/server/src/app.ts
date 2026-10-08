@@ -17,6 +17,7 @@ import { register as procedures } from "./routes/procedures.ts";
 import { register as reactor } from "./routes/reactor.ts";
 import { register as assessments } from "./routes/assessments.ts";
 import { register as takes } from "./routes/takes.ts";
+import { register as productBox } from "./routes/product-box.ts";
 import { register as support } from "./support/routes.ts";
 import { register as story } from "./story/routes.ts";
 
@@ -30,6 +31,7 @@ const MODULES: readonly RegisterRoutes[] = [
   plans,
   procedures,
   reactor,
+  productBox,
   assessments,
   takes,
   support,

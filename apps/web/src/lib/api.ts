@@ -27,6 +27,7 @@ import {
   type PlannerResult,
   type PreviewLeaseRequest,
   type PreviewLeaseResponse,
+  type ProductBoxResponse,
   type ReactorTokenRequest,
   type ReactorTokenResponse,
   type RequestAssessmentRequest,
@@ -146,6 +147,9 @@ export const createProcedure = (caseId: string, req: CreateProcedureRequest) =>
 /* Planning + preview */
 export const createPlan = (caseId: string, req: CreatePlanRequest, init?: RequestInit) =>
   post<PlannerResult>(paths.casePlans(caseId), req, init);
+/** Gemini box_2d for the product in the case reference (cached per reference on the server). */
+export const getProductBox = (caseId: string) =>
+  get<ProductBoxResponse>(paths.caseProductBox(caseId));
 export const createReactorToken = (caseId: string, req: ReactorTokenRequest) =>
   post<ReactorTokenResponse>(paths.caseReactorToken(caseId), req);
 export const previewLease = (caseId: string, req: PreviewLeaseRequest) =>
