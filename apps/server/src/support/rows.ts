@@ -119,6 +119,10 @@ export interface ReviewRow {
   resulting_state: ReviewState;
   uncertainty_note: string | null;
   created_at: string;
+  reviewer_role: "customer" | "support";
+  /** 'needs_revision' when this accept overrode the critic verdict, else null. */
+  override_check_status: "needs_revision" | null;
+  override_reason: string | null;
 }
 
 export interface AssessmentRow {

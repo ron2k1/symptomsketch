@@ -23,7 +23,8 @@ import {
  * Every check runs inside one transaction against the current rows:
  *   - owner + active case; complete capture; ready final MP4 whose hash equals finalSha256
  *   - assessmentId equals the assessment currently bound to these exact bytes + revisions
- *   - accept: never while the check is still running; never on needs_revision;
+ *   - accept: never while the check is still running; on needs_revision only a problem clip with
+ *     the explicit overrideCriticFlag (stored with the critic's reason, verdict unchanged);
  *     problem (customer reenactment): uncertain / unavailable only with a review note;
  *     solution (instruction): only when every required constraint appears consistent (matches)
  *   - an accepted take already attached to a ticket cannot be un-accepted
@@ -35,11 +36,23 @@ export function reviewConflict(message: string): AppError {
 }
 
 /** Purpose-specific acceptance rule. Throws when `accept` is not permitted. */
-export function assertAcceptable(take: TakeRow, check: CheckState, note: string | null): void {
+export function assertAcceptable(
+  take: TakeRow,
+  check: CheckState,
+  note: string | null,
+  overrideCriticFlag = false,
+): void {
   if (check === "pending") {
     throw reviewConflict("The visual check is still running. Wait for it before accepting.");
   }
+  if (overrideCriticFlag && (check !== "needs_revision" || take.purpose !== "problem")) {
+    throw new AppError(
+      "VALIDATION_FAILED",
+      "Sending a flagged clip applies only to a customer clip the check marked needs revision.",
+    );
+  }
   if (check === "needs_revision") {
+    if (overrideCriticFlag) return;
     throw reviewConflict("This clip needs revision and cannot be accepted. Keep refining.");
   }
   if (take.purpose === "solution") {
@@ -100,7 +113,19 @@ export function recordReview(
       throw reviewConflict("The visual check for this clip changed. Review it again.");
     }
     const check = checkState(binding);
-    if (req.decision === "accept") assertAcceptable(t, check, note);
+    if (req.overrideCriticFlag && req.decision !== "accept") {
+      throw new AppError("VALIDATION_FAILED", "Only an accept can override the visual check.");
+    }
+    const override = req.decision === "accept" && req.overrideCriticFlag === true;
+    if (req.decision === "accept") assertAcceptable(t, check, note, override);
+    const overrideReason =
+      override && binding
+        ? (getRow<{ summary: string | null }>(
+            ctx.db,
+            "SELECT summary FROM assessments WHERE id = ?",
+            binding.id,
+          )?.summary ?? null)
+        : null;
     if (req.decision !== "accept" && t.review_state === "accepted" && attachedToTicket(ctx, t.id)) {
       throw new AppError("TICKET_CONFLICT", "This clip was already sent to support.");
     }
@@ -110,8 +135,9 @@ export function recordReview(
     ctx.db
       .prepare(
         `INSERT INTO reviews (id, take_id, final_sha256, assessment_id, decision, resulting_state,
-           uncertainty_note, reviewer_session_id, reviewer_role, idempotency_key, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           uncertainty_note, reviewer_session_id, reviewer_role, idempotency_key, created_at,
+           override_check_status, override_reason)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         newId("rev"),
@@ -125,6 +151,8 @@ export function recordReview(
         session.role,
         req.idempotencyKey,
         ts,
+        override ? "needs_revision" : null,
+        overrideReason,
       );
     ctx.db
       .prepare("UPDATE takes SET review_state = ?, updated_at = ? WHERE id = ?")

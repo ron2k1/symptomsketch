@@ -16,7 +16,8 @@ import { createApp } from "../app.ts";
 import { loadConfig } from "../config.ts";
 import { type AppContext, createContext } from "../context.ts";
 import { stopRetentionSweep } from "../domain/lifecycle.ts";
-import { exportJobKey } from "../domain/takes.ts";
+import { assertAcceptable } from "../domain/reviews.ts";
+import { exportJobKey, type TakeRow } from "../domain/takes.ts";
 import { makeSyntheticRecording } from "../media/testing.ts";
 import {
   createTakeClient,
@@ -394,4 +395,72 @@ test("instructional take: accepted only when the check matches; deleted case is 
 
   ctx.db.prepare("UPDATE cases SET status = 'deleted' WHERE id = ?").run(c.caseId);
   assert.equal((await http.getJson(cookie, `/api/takes/${take.id}`)).status, 410);
+});
+
+test("review: a problem clip flagged needs_revision is sent only with the explicit override", async () => {
+  const cookie = fx.seedSession();
+  const c = fx.seedCase(cookie);
+  const take = await readyTake(cookie, c);
+  const sha = take.sha256!;
+
+  const uncertain = fx.setAssessment(take.id, "uncertain");
+  let r = await review(cookie, take.id, {
+    decision: "accept",
+    finalSha256: sha,
+    assessmentId: uncertain,
+    uncertaintyNote: "watched it",
+    overrideCriticFlag: true,
+  });
+  assert.equal(r.status, 400, "override is rejected when the check is not needs_revision");
+  assert.equal(r.body.code, "VALIDATION_FAILED");
+
+  const flagged = fx.setAssessment(take.id, "needs_revision");
+  r = await review(cookie, take.id, {
+    decision: "refine",
+    finalSha256: sha,
+    assessmentId: flagged,
+    overrideCriticFlag: true,
+  });
+  assert.equal(r.status, 400, "only an accept can carry the override");
+  r = await review(cookie, take.id, {
+    decision: "accept",
+    finalSha256: sha,
+    assessmentId: flagged,
+  });
+  assert.equal(r.status, 409, "needs_revision without the override is still a conflict");
+
+  r = await review(cookie, take.id, {
+    decision: "accept",
+    finalSha256: sha,
+    assessmentId: flagged,
+    overrideCriticFlag: true,
+  });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.take.reviewState, "accepted");
+  assert.equal(r.body.take.currentAssessment?.uiStatus, "needs_revision", "verdict unchanged");
+  const row = ctx.db
+    .prepare(
+      `SELECT override_check_status, override_reason, reviewer_role FROM reviews
+       WHERE take_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+    )
+    .get(take.id) as {
+    override_check_status: string | null;
+    override_reason: string | null;
+    reviewer_role: string;
+  };
+  assert.equal(row.override_check_status, "needs_revision");
+  assert.equal(row.override_reason, "test summary", "critic reason copied from the assessment");
+  assert.equal(row.reviewer_role, "customer");
+});
+
+test("review rule: an instructional clip flagged needs_revision cannot be overridden", () => {
+  const solution = { purpose: "solution" } as TakeRow;
+  assert.throws(() => assertAcceptable(solution, "needs_revision", null, true), {
+    code: "VALIDATION_FAILED",
+  });
+  const problem = { purpose: "problem" } as TakeRow;
+  assert.doesNotThrow(() => assertAcceptable(problem, "needs_revision", null, true));
+  assert.throws(() => assertAcceptable(problem, "matches", null, true), {
+    code: "VALIDATION_FAILED",
+  });
 });

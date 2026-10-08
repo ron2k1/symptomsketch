@@ -320,6 +320,11 @@ CREATE INDEX idx_support_call_transcripts_ticket ON support_call_transcripts(tic
   /* 4: which portrait (composite | base) the saved Reactor avatar was built from */ `
 ALTER TABLE ticket_support_calls ADD COLUMN avatar_portrait TEXT;
 `,
+  /* 5: a customer accept that overrode a needs_revision critic verdict, with the critic's reason */ `
+ALTER TABLE reviews ADD COLUMN override_check_status TEXT
+  CHECK (override_check_status IS NULL OR override_check_status = 'needs_revision');
+ALTER TABLE reviews ADD COLUMN override_reason TEXT;
+`,
 ];
 
 /** Apply pending migrations inside one transaction each. Returns the resulting schema version. */
