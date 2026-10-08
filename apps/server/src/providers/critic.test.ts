@@ -229,6 +229,22 @@ const runInput = {
   reference: { bytes: new Uint8Array([1, 2, 3]), mime: "image/jpeg" as const },
 };
 
+test("runCritic adds the first and last stills after the reference when keyframes are given", async () => {
+  const reply = output([supported("direction"), supported("count"), supported("product")], "ok");
+  const { client, requests } = stubClient([JSON.stringify(reply)]);
+  await runCritic(client, {
+    ...runInput,
+    keyframes: { first: new Uint8Array([4]), last: new Uint8Array([5]) },
+  });
+  const req = requests[0] as { input: { type: string; text?: string }[] };
+  assert.deepEqual(
+    req.input.map((p) => p.type),
+    ["video", "image", "text", "image", "text", "image", "text"],
+  );
+  assert.match(req.input[2]!.text ?? "", /start of the video/);
+  assert.match(req.input[4]!.text ?? "", /end of the video/);
+});
+
 test("runCritic sends video at requested fps, then image, then task; derives status itself", async () => {
   const modelSaysMatches = output(
     [

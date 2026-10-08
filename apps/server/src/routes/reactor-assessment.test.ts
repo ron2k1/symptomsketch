@@ -161,7 +161,7 @@ test("assessment: bound to exact bytes + revisions, server status, idempotent, r
     ).sha256,
   );
   assert.equal(a.result?.planRevisionId, planId);
-  assert.equal(a.result?.criticPromptVersion, "critic-v1");
+  assert.equal(a.result?.criticPromptVersion, "critic-v2");
   assert.equal(a.result?.modelId, "stub-model");
   assert.deepEqual(a.result?.inputCoverage, {
     kind: "full_video",

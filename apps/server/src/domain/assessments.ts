@@ -2,6 +2,9 @@
 // One row per critic attempt, bound by the server to the take's exact final bytes and frozen
 // revisions. Provider or output failures become an unavailable attempt, never a favorable one.
 import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import {
   ClipAssessment,
   ErrorCode,
@@ -15,7 +18,13 @@ import type { AppContext } from "../context.ts";
 import { type Db, fromJson, getRow, newId, now, toJson, tx } from "../db/index.ts";
 import { JOB_KINDS, JobError, type JobQueue } from "../db/jobs.ts";
 import { AppError } from "../http/errors.ts";
-import { CRITIC_PROMPT_VERSION, CriticOutputError, runCritic } from "../providers/critic.ts";
+import { extractThumbnail } from "../media/ffmpeg.ts";
+import {
+  CRITIC_KEYFRAME_EDGE_S,
+  CRITIC_PROMPT_VERSION,
+  CriticOutputError,
+  runCritic,
+} from "../providers/critic.ts";
 import { GeminiError } from "../providers/gemini-client.ts";
 import { geminiFor } from "../providers/planner.ts";
 import {
@@ -29,6 +38,33 @@ import {
 import { getProcedure } from "./procedures.ts";
 
 type JobState = "queued" | "running" | "done" | "failed";
+
+/**
+ * First and last moments of the final MP4 as JPEG stills for the critic (see CriticRunInput).
+ * Any failure returns null and the check runs on the video alone, as before.
+ */
+async function cutKeyframes(
+  ctx: AppContext,
+  bytes: Uint8Array,
+  durationSeconds: number,
+  signal?: AbortSignal,
+): Promise<{ first: Uint8Array; last: Uint8Array } | null> {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "ss-keyframes-"));
+  try {
+    const src = path.join(dir, "final.mp4");
+    const first = path.join(dir, "first.jpg");
+    const last = path.join(dir, "last.jpg");
+    await writeFile(src, bytes);
+    const end = Math.max(0, durationSeconds - CRITIC_KEYFRAME_EDGE_S);
+    await extractThumbnail(ctx.config.ffmpegPath, src, first, CRITIC_KEYFRAME_EDGE_S, signal);
+    await extractThumbnail(ctx.config.ffmpegPath, src, last, end, signal);
+    return { first: await readFile(first), last: await readFile(last) };
+  } catch {
+    return null;
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
 
 export interface AssessmentRow {
   id: string;
@@ -314,6 +350,7 @@ export async function runAssessmentJob(
       thinkingLevel: ctx.config.geminiThinkingLevel,
       mp4: mp4.bytes,
       reference: await loadReferenceImage(ctx, product),
+      keyframes: await cutKeyframes(ctx, mp4.bytes, durationSeconds, signal),
       ...(signal ? { signal } : {}),
     });
 

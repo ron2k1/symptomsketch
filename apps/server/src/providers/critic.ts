@@ -20,7 +20,9 @@ import {
 } from "./gemini-client.ts";
 
 /** Bump when the system prompt, task text or schema changes; stored with every assessment. */
-export const CRITIC_PROMPT_VERSION = "critic-v1";
+export const CRITIC_PROMPT_VERSION = "critic-v2";
+/** Seconds in from each end of the final MP4 where the first / last stills are cut. */
+export const CRITIC_KEYFRAME_EDGE_S = 0.25;
 export const CRITIC_TIMEOUT_MS = 90_000;
 /** Allowed overshoot (seconds) of a reported time range past the real duration before rejecting. */
 export const CRITIC_TIME_TOLERANCE_S = 0.25;
@@ -32,6 +34,7 @@ Rules:
 - Judge motion only from visible changes of the product between frames. The burned-in caption text and the intended action are NOT evidence; a matching caption never supports a constraint.
 - For every constraint id you are given, return exactly one check: "supported" only with a concrete visible observation, "contradicted" when the video visibly shows something different (for example a different direction, a different number of movements, a different product), "not_observable" when the detail is hidden, ambiguous, too brief for the sampled frames, or cannot be judged.
 - Compare the product's appearance with the reference image for product constraints.
+- When two stills cut from the video follow the reference (its first and last moments), compare the product's position against the background between them. A changed position is movement even when it was gradual; the same position means it did not travel.
 - observation: one short factual sentence about what is visible. timeRangeSeconds: [start, end] in seconds from the start of the video when the evidence is localized, else null.
 - Sampling is limited; never claim to have seen every frame. Note limits in "limitations".
 - Do not diagnose causes, certify mechanics, or score accuracy. No percentages.
@@ -204,6 +207,11 @@ export interface CriticRunInput extends CriticRequestInput {
   thinkingLevel: ThinkingLevel;
   mp4: Uint8Array;
   reference: { bytes: Uint8Array; mime: GeminiImageMime } | null;
+  /**
+   * JPEG stills of the video's first and last moments. X2 output often creeps, and the model
+   * misses a gradual move from sampled frames alone; null runs the check on the video only.
+   */
+  keyframes?: { first: Uint8Array; last: Uint8Array } | null;
   signal?: AbortSignal;
 }
 
@@ -241,6 +249,14 @@ export async function runCritic(
   const parts = [
     videoPart(input.mp4, "video/mp4", input.requestedFps),
     ...(input.reference ? [imagePart(input.reference.bytes, input.reference.mime)] : []),
+    ...(input.keyframes
+      ? [
+          textPart("Still from the start of the video:"),
+          imagePart(input.keyframes.first, "image/jpeg"),
+          textPart("Still from the end of the video:"),
+          imagePart(input.keyframes.last, "image/jpeg"),
+        ]
+      : []),
     textPart(buildCriticTask(input)),
   ];
   let lastReason: CoverageFailure | "invalid_output" = "invalid_output";
