@@ -2,17 +2,43 @@
 
 ## DEMO SCRIPT
 
+Open on the live Reactor X2 stage. Build the case before the judges arrive, then run the
+on-stage part in about 20 seconds.
+
+Before (about 1 minute, off stage):
+
 1. Open the deployed URL (or `pnpm install && pnpm dev`, then http://127.0.0.1:5173).
-2. Pick Robot vacuum, describe "It stops, then jerks backward once", open Recreate, refine, record a
-   take, review the checked MP4, send it to Demo Support.
-3. In a second browser profile open `/support`, reply with text or a demonstration clip; the
-   customer sees it in their Support tab.
+2. Pick Robot vacuum and enter the demo access code. The Issue box is prefilled with the demo's
+   example, "It stops, then jerks backward once." Press Continue to Recreate; Gemini writes the
+   movement plan.
+3. Press Start preview. The stage badge reads "Live · Reactor X2" and the stage takes the full
+   width. Leave it running: generation is continuous while the stage is live.
+
+On stage (about 20 seconds; the re-plan time depends on Gemini):
+
+1. 0 s: point at the stage. Every moving frame is Reactor X2, streamed from the product photo and
+   steered by the compiled plan. The Reactor X2 readout under the stage shows uptime, round trip,
+   "Gemini planned in" and "X2 applied in".
+2. 3 s: steer it live. Type "the backward jerk is smaller and quicker" in Refine the movement and
+   press Update preview; X2 changes the motion without restarting the stream.
+3. About 10 s: once the corrected movement is on stage, the clip button counts down ("Clip in N s")
+   for 5 s, then reads "Clip last N s". Press it when the stage shows the jerk. It saves the last 5
+   to 11 seconds of the live X2 stream as an MP4, ending at the click, so you capture the moment
+   after it happens. The preview keeps generating.
+4. About 14 s: the Gemini critic checks that exact MP4 against the plan (matches, uncertain or
+   needs_revision). Accept it.
+5. About 18 s: Support tab, Send to Demo Support. In a second browser profile, `/support` shows the
+   ticket with the clip; a text reply appears in the customer's Support tab.
 
 ## What it is
 
-Visual context for product support. Gemini turns a customer's words into an explicit action plan
-and later checks the finished clip against it; Reactor X2 turns the product photo into a moving
-reenactment; the person who described it approves the exact file before anyone else sees it.
+A live Reactor X2 world-model reenactment of what your product did, for product support. Reactor
+X2 takes one photo of the product and generates a real-time, steerable video of it doing the thing
+the customer describes; corrections in plain words steer the running stream. Gemini plans before
+(it turns the customer's words into an explicit action plan and the X2 prompt) and checks after
+(it compares the finished clip to that plan). Every moving frame on the stage and in the MP4 comes
+from X2. Generation runs continuously while the stage is live, and the customer clips the moment
+they want, approves the exact file, and sends it to support.
 
 ## Setup
 
@@ -54,13 +80,13 @@ SQLite through `node:sqlite`.
 Customer:
 
 1. Landing, choose Robot vacuum (or upload a photo), enter the demo access code.
-2. Issue: describe what happened in your own words. Gemini builds a movement plan (direction, count,
-   timing) and lists what is still unclear.
-3. Recreate: Start preview opens a live Reactor X2 session. Refine in plain words; Update preview
-   applies the correction.
-4. Record next take saves about 8 s of generated output as an MP4. The Gemini critic checks the exact
-   file against the plan and returns matches, uncertain or needs_revision with a suggested
-   correction.
+2. Issue: describe what happened in your own words (demo products start from an editable example).
+   Gemini builds a movement plan (direction, count, timing) and lists what is still unclear.
+3. Recreate: Start preview opens a live Reactor X2 session and the stage takes the full width. The
+   stream keeps generating while it is live. Refine in plain words; Update preview steers it.
+4. Clip last N s saves the last 5 to 11 s of the live X2 stream as an MP4, ending at the click,
+   without stopping the preview. The Gemini critic checks the exact file against the plan and
+   returns matches, uncertain or needs_revision with a suggested correction.
 5. Accept the take (a note is required when the critic could not verify it), then send it from the
    Support tab. Support replies show up in the same tab.
 
@@ -68,7 +94,7 @@ Support:
 
 1. `/support`, enter the support code. The inbox lists tickets.
 2. Open a ticket and play the customer's clip, then open the work case.
-3. Show the solution: a solution plan, live preview and recorded take, reviewed the same way.
+3. Show the solution: a solution plan, live preview and a clipped take, reviewed the same way.
 4. Reply with text and the take; the customer sees it in their Support tab.
 
 ## How the motion is generated
@@ -93,7 +119,10 @@ are in `docs/providers/reactor-x2.md` section 9. Nothing on screen is a stock cl
   frame, and the critic gets the clip's first and last stills at full size, so it sees the move
   (critic-v1 called the same clip motionless). X2 still sometimes adds artifacts, such as a second
   vacuum body appearing behind the moved one, and the critic flags those as needs_revision, which
-  blocks accept. Record another take, or answer with a text reply.
+  blocks accept. Clip again, or answer with a text reply.
 - A small dark sliver of the side brush can stay on the rug behind the moved vacuum.
+- The server caps one X2 session at 5 minutes, so the live preview switches to a fresh session
+  about every 4:40 and shows "Reconnecting to Reactor X2" for a few seconds. A tab hidden for 2
+  minutes stops the preview.
 - Generated clips illustrate what the customer describes. They do not diagnose a fault. Demo
   Support is hosted inside SymptomSketch; no manufacturer is contacted.
