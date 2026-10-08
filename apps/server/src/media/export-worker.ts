@@ -47,6 +47,7 @@ export async function runExportJob(
   takeId: string,
   signal?: AbortSignal,
 ): Promise<ExportJobResult> {
+  const started = Date.now();
   const take = getTakeRow(ctx.db, takeId);
   if (!take) throw new JobError("NOT_FOUND");
   if (take.processing_state === "ready" && take.sha256) return { takeId, sha256: take.sha256 };
@@ -184,6 +185,7 @@ export async function runExportJob(
     throw new JobError("CASE_INACTIVE");
   }
 
+  console.log(`[export] ${takeId} final ready ms=${Date.now() - started}`);
   queueAssessment(ctx, takeId);
   return { takeId, sha256: media.sha256 };
 }
