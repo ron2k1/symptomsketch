@@ -78,12 +78,14 @@ export function TicketSnapshotPanel({ ticket }: { ticket: Ticket }) {
             </span>
           ) : null}
         </Field>
-        <Field label="Submitted clip">
-          {formatTakeNumber(s.takeNumber)} · {s.caption}
+        <Field label={s.takeNumber === null ? "Submitted story" : "Submitted clip"}>
+          {s.takeNumber === null ? s.caption : `${formatTakeNumber(s.takeNumber)} · ${s.caption}`}
           {s.durationMs !== null ? ` · ${formatDuration(s.durationMs)}` : ""}
-          <span className="block font-mono text-xs text-muted-foreground" title={s.finalSha256}>
-            sha {shortHash(s.finalSha256)}
-          </span>
+          {s.finalSha256 ? (
+            <span className="block font-mono text-xs text-muted-foreground" title={s.finalSha256}>
+              sha {shortHash(s.finalSha256)}
+            </span>
+          ) : null}
         </Field>
         <Field label="Customer message">
           <span className="whitespace-pre-wrap">{s.message}</span>

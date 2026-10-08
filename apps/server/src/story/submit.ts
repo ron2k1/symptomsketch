@@ -24,7 +24,7 @@ import { sha256File } from "../media/export-pipeline.ts";
 import { caseStoragePath, resolveStoragePath } from "../media/files.ts";
 import { getLiveAsset } from "../support/accepted-take.ts";
 import { loadTicketForViewer } from "../support/access.ts";
-import { loadOwnedCase } from "../support/tickets.ts";
+import { loadOwnedCase, openStoryTicket } from "../support/tickets.ts";
 
 /**
  * "Send this story to support" (P1). The customer's browser recorded the FastH3 stream it played
@@ -272,8 +272,9 @@ export function registerStorySubmit(router: Router, ctx: AppContext): void {
           ? await store(ctx, kase.id, frame, "thumbnails", "png", "image/png")
           : null;
         const storyId = `story_${randomBytes(16).toString("base64url")}`;
-        const ticketId = liveTicketId(ctx.db, kase.id);
         const ts = now();
+        let ticketId: string | null = null;
+        let ticketOpened = false;
         tx(ctx.db, () => {
           const insert = ctx.db.prepare(
             `INSERT INTO assets (id, case_id, owner_session_id, kind, mime, size_bytes, duration_ms,
@@ -308,6 +309,12 @@ export function registerStorySubmit(router: Router, ctx: AppContext): void {
               ts,
             );
           }
+          // Inside the same transaction: a double click or retry finds the ticket this opened.
+          ticketId = liveTicketId(ctx.db, kase.id);
+          if (!ticketId) {
+            ticketId = openStoryTicket(ctx, session, kase, storyId, beats, ts);
+            ticketOpened = ticketId !== null;
+          }
           ctx.db
             .prepare(
               `INSERT INTO case_stories (id, case_id, owner_session_id, ticket_id, reel_asset_id,
@@ -325,10 +332,14 @@ export function registerStorySubmit(router: Router, ctx: AppContext): void {
             );
         });
         console.log(
-          `[story] sent case=${kase.id} beats=${beats.beats.length} reelBytes=${reelFile.size} ticket=${ticketId ? "yes" : "none"}`,
+          `[story] sent case=${kase.id} beats=${beats.beats.length} reelBytes=${reelFile.size} ticket=${ticketOpened ? "opened" : ticketId ? "attached" : "none"}`,
         );
         const row = latestStory(ctx.db, kase.id, storyId)!;
-        const body: StorySubmitResponse = { ticketId, story: storyDto(ctx.db, row, ticketId) };
+        const body: StorySubmitResponse = {
+          ticketId,
+          ticketOpened,
+          story: storyDto(ctx.db, row, ticketId),
+        };
         res.status(201).json(body);
       } finally {
         // No-op for files already moved into private storage.

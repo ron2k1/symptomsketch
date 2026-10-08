@@ -16,7 +16,8 @@ export interface TicketRow {
   id: string;
   case_id: string;
   owner_session_id: string;
-  take_id: string;
+  /** Null for a ticket a sent story opened (no X2 take). */
+  take_id: string | null;
   queue: string;
   status: TicketStatus;
   snapshot_json: string;
