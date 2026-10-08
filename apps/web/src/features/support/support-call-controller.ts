@@ -71,6 +71,21 @@ export interface CallEnded {
 const AVATAR_READY_TIMEOUT_MS = 120_000;
 const LIVE_TIMEOUT_MS = 60_000;
 const END_CALL_TIMEOUT_MS = 5_000;
+/**
+ * disconnect() waits out SDK reads still in flight (an unanswered end_call among them), which held
+ * it ~25 s in the first live call. The session is ended either way, so the UI and the transcript
+ * save stop waiting after this and the disconnect finishes in the background.
+ */
+const DISCONNECT_WAIT_MS = 5_000;
+
+const settleWithin = (p: Promise<unknown>, ms: number): Promise<boolean> =>
+  Promise.race([
+    p.then(
+      () => true,
+      () => true,
+    ),
+    new Promise<boolean>((r) => window.setTimeout(() => r(false), ms)),
+  ]);
 
 class CallFailure extends Error {}
 
@@ -381,22 +396,20 @@ export class SupportCallController {
         : 0;
     this.set({ phase: "ended", detail: null, error, micOn: false, endReason });
     if (model) {
-      try {
-        const phase = this.session?.phase ?? "";
-        if (["starting", "warming_up", "live"].includes(phase)) {
-          await Promise.race([
-            model.endCall(),
-            new Promise((r) => window.setTimeout(r, END_CALL_TIMEOUT_MS)),
-          ]);
-        }
-      } catch {
-        // disconnect below ends the session regardless
-      }
-      try {
-        await model.disconnect();
-      } catch {
-        // the provider also stops it at max_session_duration_seconds
-      }
+      const t0 = performance.now();
+      const phase = this.session?.phase ?? "";
+      // The SDK never rejects endCall; disconnect below ends the session regardless.
+      const ended = ["starting", "warming_up", "live"].includes(phase)
+        ? await settleWithin(model.endCall(), END_CALL_TIMEOUT_MS)
+        : null;
+      const t1 = performance.now();
+      // The provider also stops the session at max_session_duration_seconds.
+      const disconnected = await settleWithin(model.disconnect(), DISCONNECT_WAIT_MS);
+      console.info(
+        `[support-call] end_call ${ended === null ? "skipped" : ended ? "ok" : "timeout"} ` +
+          `ms=${Math.round(t1 - t0)} disconnect ${disconnected ? "ok" : "pending"} ` +
+          `ms=${Math.round(performance.now() - t1)}`,
+      );
     }
     this.release();
     if (this.callStarted && this.view.transcript.lines.length > 0) {
