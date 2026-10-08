@@ -18,6 +18,8 @@ import {
   type CallView,
 } from "./support-call-controller";
 import { formatClock } from "./support-call-model";
+import { prepStatusText } from "./sam-prep";
+import { samPrep, useSamPrep } from "./useSamPrep";
 
 const BASE_PORTRAIT = { src: "/assets/support-agent.jpg", width: 860, height: 1152 } as const;
 
@@ -130,6 +132,8 @@ export function SupportCall({ ticketId, onEnded }: SupportCallProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const transcript = useTranscriptSave(ticketId, onEnded);
   const { view, controller } = useSupportCall(transcript.save);
+  const prep = useSamPrep(ticketId);
+  const prepText = prepStatusText(prep.view, prep.now, SUPPORT_CALL_AGENT_NAME);
   const [draft, setDraft] = useState("");
   const idle = view.phase === "idle";
   const live = view.phase === "live";
@@ -137,6 +141,8 @@ export function SupportCall({ ticketId, onEnded }: SupportCallProps) {
 
   function start() {
     transcript.reset();
+    // A real call takes over: background prep stops and its hidden session disconnects.
+    samPrep.stop(ticketId);
     void controller.start(ticketId, () => videoRef.current);
   }
 
@@ -225,6 +231,23 @@ export function SupportCall({ ticketId, onEnded }: SupportCallProps) {
             <Video aria-hidden />
             {idle ? SUPPORT_CALL_COPY.start : "Talk to support again"}
           </Button>
+          {idle && prep.view.ticketId === ticketId && prepText ? (
+            <p
+              role="status"
+              aria-live="polite"
+              data-testid="sam-prep-status"
+              className={cn(
+                "text-sm tabular-nums",
+                prep.view.phase === "ready"
+                  ? "text-primary"
+                  : prep.view.phase === "failed"
+                    ? "text-warning"
+                    : "text-muted-foreground",
+              )}
+            >
+              {prepText}
+            </p>
+          ) : null}
           {view.phase === "ended" && transcript.saveState !== "idle" ? (
             <p
               role="status"
