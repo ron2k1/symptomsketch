@@ -199,7 +199,7 @@ export class X2Preview {
     }
     if (this.closed) throw new PreviewFailure("ABORTED", "connect");
     if (this.x2.getStatus() !== "ready") throw new PreviewFailure("INVALID_STATE", "connect");
-    this.region = detectProductRegion(still);
+    this.region = detectProductRegion();
     this.motion = buildMotionProgram(action, this.region, this.purpose);
     this.source = createStillSource(still, this.region);
     try {

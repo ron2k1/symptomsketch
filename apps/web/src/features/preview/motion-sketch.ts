@@ -286,33 +286,3 @@ export function poseAt(
 ): { dx: number; dy: number; scale: number } {
   return { dx: program.dx * p + 0, dy: program.dy * p + 0, scale: 1 + (program.endScale - 1) * p };
 }
-
-/**
- * The robot-vacuum demo still (assets/demo/demo-vacuum.jpg, 1600x1067), measured in the motion lab:
- * the vacuum's front (side brush + bumper) points screen-left and slightly toward the camera.
- */
-export const DEMO_VACUUM_REGION: ProductRegion = (() => {
-  const W = 1600;
-  const H = 1067;
-  const e = (cx: number, cy: number, rx: number, ry: number): MaskEllipse => ({
-    kind: "ellipse",
-    cx: cx / W,
-    cy: cy / H,
-    rx: rx / W,
-    ry: ry / H,
-  });
-  const r = (x: number, y: number, w: number, h: number): MaskRect => ({
-    kind: "rect",
-    x: x / W,
-    y: y / H,
-    w: w / W,
-    h: h / H,
-  });
-  return {
-    mask: [e(877, 700, 342, 116), r(535, 700, 684, 150), e(877, 850, 340, 78), e(515, 790, 34, 22)],
-    center: { x: 877 / W, y: 757 / H },
-    box: r(480, 585, 742, 343),
-    cleanPlate: r(0, 585, 470, 360),
-    forward: { x: -1, y: MOTION.minorAxis },
-  };
-})();

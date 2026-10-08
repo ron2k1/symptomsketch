@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SelectedAction } from "@symptomsketch/contracts";
 import {
-  DEMO_VACUUM_REGION,
   MOTION,
   amplitudeFor,
   buildMotionProgram,
@@ -10,8 +9,41 @@ import {
   poseAt,
   programEndMs,
   progressAt,
+  type MaskEllipse,
+  type MaskRect,
+  type ProductRegion,
 } from "./motion-sketch";
-import { lumaDistance, matchKnownRegion } from "./product-region";
+import { detectProductRegion } from "./product-region";
+
+/**
+ * Test-only geometry: a product facing screen-left on a 1600x1067 still. The app never ships a
+ * hand-measured region; this only exercises the pure program builder.
+ */
+const DEMO_VACUUM_REGION: ProductRegion = (() => {
+  const W = 1600;
+  const H = 1067;
+  const e = (cx: number, cy: number, rx: number, ry: number): MaskEllipse => ({
+    kind: "ellipse",
+    cx: cx / W,
+    cy: cy / H,
+    rx: rx / W,
+    ry: ry / H,
+  });
+  const r = (x: number, y: number, w: number, h: number): MaskRect => ({
+    kind: "rect",
+    x: x / W,
+    y: y / H,
+    w: w / W,
+    h: h / H,
+  });
+  return {
+    mask: [e(877, 700, 342, 116), r(535, 700, 684, 150), e(877, 850, 340, 78), e(515, 790, 34, 22)],
+    center: { x: 877 / W, y: 757 / H },
+    box: r(480, 585, 742, 343),
+    cleanPlate: r(0, 585, 470, 360),
+    forward: { x: -1, y: MOTION.minorAxis },
+  };
+})();
 
 function action(patch: Partial<SelectedAction> = {}): SelectedAction {
   return {
@@ -216,11 +248,8 @@ describe("progress, pose and pointer path", () => {
   });
 });
 
-describe("product region matching", () => {
-  it("matches only a still with the demo aspect and a close luma fingerprint", () => {
-    const flat = new Array<number>(96).fill(128);
-    expect(lumaDistance(flat, flat)).toBe(0);
-    expect(lumaDistance(flat, [1, 2])).toBe(Number.POSITIVE_INFINITY);
-    expect(matchKnownRegion(1600 / 1067, flat)).toBeNull();
+describe("detectProductRegion", () => {
+  it("returns no region for any photo (no fingerprint matching, no hand-measured masks)", () => {
+    expect(detectProductRegion()).toBeNull();
   });
 });
