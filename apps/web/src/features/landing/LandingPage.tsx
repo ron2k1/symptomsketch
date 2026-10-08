@@ -9,6 +9,7 @@ import {
   type ProductSelectionState,
 } from "@/components/ui/modern-hero";
 import { createCase, errorMessage } from "@/lib/api";
+import { useDocumentTitle } from "@/lib/document-title";
 import { newClientRequestId } from "@/lib/ids";
 import { useCustomerAccess } from "@/features/access/useCustomerAccess";
 import { PhotoIntake, type PhotoIntakeHandle } from "@/features/intake/PhotoIntake";
@@ -38,6 +39,7 @@ export function LandingPage() {
   const requestIds = useRef(new Map<HeroProductId, string>());
   const intakeRef = useRef<PhotoIntakeHandle>(null);
   const lenis = useLenis();
+  useDocumentTitle("Visual product support");
 
   const openCase = useCallback(
     (caseId: string) => {

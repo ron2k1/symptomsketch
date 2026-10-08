@@ -10,6 +10,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { errorMessage, listSupportTickets } from "@/lib/api";
+import { useDocumentTitle } from "@/lib/document-title";
 import { formatTimestamp } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { STAFF_TICKET_STATUS_LABELS } from "./labels";
@@ -143,6 +144,7 @@ function InboxQueue({ onAuthLost }: { onAuthLost(): void }) {
 /** Route "/support": staff login card, then the submitted-ticket queue (polled every 3 s). */
 export function SupportInboxPage() {
   const session = useSupportSession();
+  useDocumentTitle("Support inbox");
   return (
     <SupportShell>
       {session.status === "checking" ? <SupportChecking /> : null}

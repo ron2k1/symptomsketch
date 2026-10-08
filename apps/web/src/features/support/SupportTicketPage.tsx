@@ -4,6 +4,7 @@ import { ArrowLeft, RefreshCw } from "lucide-react";
 import { APP_PATHS, type Ticket } from "@symptomsketch/contracts";
 import { Button } from "@/components/ui/button";
 import { errorMessage, getTicket, isApiClientError } from "@/lib/api";
+import { useDocumentTitle } from "@/lib/document-title";
 import { DemonstrationPanel } from "./DemonstrationPanel";
 import { isAuthError, isTerminalError } from "./model";
 import { ReplyComposer } from "./ReplyComposer";
@@ -25,6 +26,8 @@ function TicketWorkspace({ ticketId, onAuthLost }: { ticketId: string; onAuthLos
     stopOn: isTerminalError,
   });
   const ticket = poll.data;
+  // Adds the product once the ticket loads; SupportTicketPage sets the base title.
+  useDocumentTitle("Support ticket", ticket?.snapshot.productLabel);
   const work = useWorkCaseTakes(ticket?.workCaseIds ?? [], ticket !== null);
 
   useEffect(() => {
@@ -97,6 +100,7 @@ function TicketWorkspace({ ticketId, onAuthLost }: { ticketId: string; onAuthLos
 export function SupportTicketPage() {
   const { ticketId = "" } = useParams();
   const session = useSupportSession();
+  useDocumentTitle("Support ticket");
   return (
     <SupportShell
       headerAction={

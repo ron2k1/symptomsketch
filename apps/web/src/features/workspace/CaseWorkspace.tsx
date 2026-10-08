@@ -1,8 +1,15 @@
 import { useEffect, useRef } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { LoaderCircle } from "lucide-react";
-import { APP_PATHS, ASSESSMENT_LABELS, takeShelfLabel, type Take } from "@symptomsketch/contracts";
+import {
+  APP_PATHS,
+  ASSESSMENT_LABELS,
+  CASE_TAB_LABELS,
+  takeShelfLabel,
+  type Take,
+} from "@symptomsketch/contracts";
 import { Button } from "@/components/ui/button";
+import { useDocumentTitle } from "@/lib/document-title";
 import { formatTakeNumber } from "@/lib/format";
 import { CustomerSupportTab } from "@/features/support/CustomerSupportTab";
 import { useTakePolling } from "@/features/review/useTakePolling";
@@ -52,8 +59,10 @@ function TakePoller() {
   return null;
 }
 
+const isAccessCode = (code: string) => code === "ACCESS_REQUIRED" || code === "SESSION_EXPIRED";
+
 function LoadError({ code, message }: { code: string; message: string }) {
-  const needsAccess = code === "ACCESS_REQUIRED" || code === "SESSION_EXPIRED";
+  const needsAccess = isAccessCode(code);
   return (
     <div className="mx-auto max-w-md space-y-4 rounded-[var(--radius-card)] border border-border bg-card p-6 text-center">
       <h1 className="text-xl font-semibold">
@@ -91,9 +100,13 @@ function WorkspaceShell() {
     }
   }, [tab, state.previewStatus, dispatch]);
 
-  useEffect(() => {
-    if (caseData) document.title = `${ws.productName} / SymptomSketch`;
-  }, [caseData, ws.productName]);
+  useDocumentTitle(
+    ...(state.loadError
+      ? [isAccessCode(state.loadError.code) ? "Access code needed" : "Case unavailable"]
+      : caseData
+        ? [CASE_TAB_LABELS[tab], ws.productName]
+        : ["Opening case"]),
+  );
 
   return (
     <div className="cyber-grid min-h-screen overflow-x-clip">
