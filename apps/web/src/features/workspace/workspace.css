@@ -1,0 +1,44 @@
+/*
+ * Recreate layout (spec 6 desktop composition + tablet/mobile). Layout only: every color comes
+ * from the theme tokens in src/index.css.
+ *   < 1180px: one column; product shelf (collapsible), stage, conversation, take shelf.
+ *  >= 1180px: 232px product shelf | flexible stage + take shelf | 336px conversation.
+ */
+.ws-recreate {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "product"
+    "stage"
+    "conversation"
+    "takes";
+}
+
+.ws-area-product {
+  grid-area: product;
+  min-width: 0;
+}
+.ws-area-stage {
+  grid-area: stage;
+  min-width: 0;
+}
+.ws-area-conversation {
+  grid-area: conversation;
+  min-width: 0;
+}
+.ws-area-takes {
+  grid-area: takes;
+  min-width: 0;
+}
+
+@media (min-width: 1180px) {
+  .ws-recreate {
+    grid-template-columns: 232px minmax(0, 1fr) 336px;
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      "product stage conversation"
+      "product takes conversation";
+    align-items: start;
+  }
+}
