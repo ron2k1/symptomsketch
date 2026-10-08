@@ -8,6 +8,8 @@ const BTN = "h-11 px-4";
 
 export interface StageControlsProps {
   status: PreviewStatus;
+  /** A dropped or rotated connection is being replaced (Stop still ends the whole preview). */
+  reconnecting: boolean;
   statusText: string;
   detail: string | null;
   takeMode: boolean;
@@ -89,7 +91,8 @@ function clipLabel(clip: ClipView): string {
 function stopButton(p: StageControlsProps) {
   return (
     <Button className={BTN} variant="outline" onClick={p.onStop} data-stage-action="stop">
-      <Square aria-hidden /> {p.status === "connecting" ? "Cancel" : "Stop preview"}
+      <Square aria-hidden />{" "}
+      {p.status === "connecting" && !p.reconnecting ? "Cancel" : "Stop preview"}
     </Button>
   );
 }

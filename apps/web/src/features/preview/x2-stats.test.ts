@@ -45,11 +45,11 @@ describe("readoutCells", () => {
       sessionMs: 252_400,
     });
     expect(cells).toEqual([
-      { key: "session", label: "Live for", value: "4:12" },
+      { key: "session", label: "Running for", value: "4:12" },
       { key: "fps", label: "Output", value: "24.0 fps" },
       { key: "rtt", label: "Round trip", value: "42 ms" },
       { key: "planned", label: "Gemini planned in", value: "6.1 s" },
-      { key: "applied", label: "X2 applied in", value: "118 ms" },
+      { key: "applied", label: "X2 accepted in", value: "118 ms" },
       { key: "connect", label: "Connected in", value: "2.1 s" },
     ]);
   });

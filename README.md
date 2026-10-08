@@ -18,7 +18,7 @@ On stage (about 20 seconds; the re-plan time depends on Gemini):
 
 1. 0 s: point at the stage. Every moving frame is Reactor X2, streamed from the product photo and
    steered by the compiled plan. The Reactor X2 readout under the stage shows uptime, round trip,
-   "Gemini planned in" and "X2 applied in".
+   "Gemini planned in" and "X2 accepted in".
 2. 3 s: steer it live. Type "the backward jerk is smaller and quicker" in Refine the movement and
    press Update preview; X2 changes the motion without restarting the stream.
 3. About 10 s: once the corrected movement is on stage, the clip button counts down ("Clip in N s")
