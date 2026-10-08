@@ -4,6 +4,7 @@ import {
   initialStoryState,
   planCustom,
   planPick,
+  playedBeats,
   shouldPlayPending,
   storyReducer,
   type Offer,
@@ -183,5 +184,51 @@ describe("branch bookkeeping", () => {
     s = storyReducer(s, { type: "branch_queued", beat: 3, index: 0, clipId: "stale" });
     expect(s.offer!.branches.map((b) => b.clipId)).toEqual([null, "q", null]);
     expect(s.offer!.branches[2]!.failed).toBe(true);
+  });
+});
+
+describe("playedBeats (what the story sends)", () => {
+  const beat = (clipId: string, n: number) => ({
+    ...scene(n),
+    custom: false,
+    clipId,
+    offered: [],
+  });
+  const pending = (clipId: string) => ({
+    clipId,
+    pickedAt: 0,
+    wasReady: false,
+    playSent: false,
+    measure: true,
+  });
+
+  it("drops a pick that was still building when the story ended", () => {
+    const s = run([
+      queued("o", 0, 1),
+      { type: "picked", beat: beat("o", 1), pending: pending("o") },
+      { type: "clip_started", clip: { clipId: "o" }, at: 1 },
+      { type: "clip_finished", clipId: "o" },
+      queued("b", 2),
+      { type: "picked", beat: beat("b", 2), pending: pending("b") },
+    ]);
+    expect(s.beats.map((b) => b.clipId)).toEqual(["o", "b"]);
+    expect(playedBeats(s).map((b) => b.clipId)).toEqual(["o"]);
+  });
+
+  it("keeps the scene on stage when the story ended mid-scene", () => {
+    const s = run([
+      queued("o", 0, 1),
+      { type: "picked", beat: beat("o", 1), pending: pending("o") },
+      { type: "clip_started", clip: { clipId: "o" }, at: 1 },
+    ]);
+    expect(playedBeats(s).map((b) => b.clipId)).toEqual(["o"]);
+  });
+
+  it("is empty when the opening never reached the stage", () => {
+    const s = run([
+      queued("o", 0, 1),
+      { type: "picked", beat: beat("o", 1), pending: pending("o") },
+    ]);
+    expect(playedBeats(s)).toEqual([]);
   });
 });

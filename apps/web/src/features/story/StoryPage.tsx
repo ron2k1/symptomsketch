@@ -13,7 +13,7 @@ import { errorMessage, getCase } from "@/lib/api";
 import { useDocumentTitle } from "@/lib/document-title";
 import { cn } from "@/lib/utils";
 import { ReactorQueueStrip, StoryTimeline } from "./StoryPanels";
-import { branchReadiness, isReady, shortClipId, type StoryState } from "./story-state";
+import { branchReadiness, isReady, playedBeats, shortClipId, type StoryState } from "./story-state";
 import { StorySendPanel } from "./StorySendPanel";
 import { useStory } from "./useStory";
 import { useStoryRecorder } from "./useStoryRecorder";
@@ -204,7 +204,7 @@ function StoryWorkspace({ caseId, caseData }: { caseId: string; caseData: CaseDe
         {phase === "ended" ? (
           <StorySendPanel
             caseId={caseId}
-            beats={state.beats}
+            beats={playedBeats(state)}
             recorder={recorder}
             clipSeconds={story.effectiveSeconds ?? STORY_LIMITS.clipSeconds}
           />

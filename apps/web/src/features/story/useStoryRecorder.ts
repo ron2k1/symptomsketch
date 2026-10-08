@@ -105,7 +105,11 @@ export function useStoryRecorder(stream: MediaStream | null, playingId: string |
     }
     const mime = rec.mimeType.split(";")[0] || "video/webm";
     rec.onstop = () => {
-      const reel = chunks.current.length > 0 ? new Blob(chunks.current, { type: mime }) : null;
+      // Nothing played (ended during the opening build): the chunks hold only a WebM header.
+      const reel =
+        chunks.current.length > 0 && durationMs > 0
+          ? new Blob(chunks.current, { type: mime })
+          : null;
       chunks.current = [];
       void framePromise.then((frame) => {
         setResult({

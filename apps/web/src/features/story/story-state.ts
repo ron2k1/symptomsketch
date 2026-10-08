@@ -312,6 +312,15 @@ export function shouldPlayPending(s: StoryState): string | null {
   return isReady(s, p.clipId) ? p.clipId : null;
 }
 
+/**
+ * The beats that reached the stage (FastH3 sent clip_started for them), in order. A pick still
+ * building when the story ended never played: it is not in the reel or the last frame, so it must
+ * not be sent to support (or to the ending director) as a scene of the story.
+ */
+export function playedBeats(s: StoryState): PlayedBeat[] {
+  return s.beats.filter((b) => s.clips[b.clipId]?.startedAt != null);
+}
+
 /** Readiness label of a choice card, from the live queue view only. */
 export function branchReadiness(
   s: StoryState,
