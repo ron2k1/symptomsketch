@@ -134,7 +134,10 @@ export class SupportCallController {
     }
   }
 
-  /** Runs alongside the brief: the per-ticket Nano Banana composite can take ~15 s. */
+  /**
+   * Runs alongside the brief: the per-ticket Nano Banana composite can take ~15 s. A failed
+   * composite rejects (no stock face is substituted), so the call ends with the error and Retry.
+   */
   private async loadPortrait(ticketId: string, signal: AbortSignal): Promise<Blob> {
     this.set({ detail: "Preparing the agent portrait" });
     const blob = await fetchSupportCallPortrait(paths.ticketSupportCallPortrait(ticketId), {

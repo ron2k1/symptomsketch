@@ -202,7 +202,10 @@ export const saveSupportCallTranscript = (
     keepalive: new TextEncoder().encode(JSON.stringify(req)).length < KEEPALIVE_MAX_BYTES,
   });
 
-/** The agent portrait bytes for create_avatar (Nano Banana composite or the base portrait). */
+/**
+ * The ticket's agent portrait for create_avatar (the per-ticket Nano Banana composite). A failed
+ * composite is a PROVIDER_FAILED / PROVIDER_TIMEOUT error that the call shows with Retry.
+ */
 export async function fetchSupportCallPortrait(url: string, init?: RequestInit): Promise<Blob> {
   let res: Response;
   try {

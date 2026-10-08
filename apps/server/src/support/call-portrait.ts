@@ -2,7 +2,8 @@
 // Base: one fictional agent generated once with Nano Banana by scripts/generate-support-agent.ts
 // and committed as apps/web/public/assets/support-agent.jpg. Per ticket: Nano Banana composites
 // that same fictional agent holding the customer's own product (the ticket's normalized reference
-// photo), cached on disk. Any failure or a slow provider falls back to the base portrait.
+// photo), cached on disk. A failed or slow composite is an error the customer can retry; the
+// call never silently swaps in the stock base portrait.
 // Never uses a real person's photo: the only person in any input is the generated agent.
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -85,59 +86,36 @@ export function setNanoBananaFor(ctx: AppContext, client: NanoBananaClient): voi
   clients.set(ctx, client);
 }
 
-export type PortraitSource = "composite" | "base";
-
-export interface TicketPortrait {
-  path: string;
-  source: PortraitSource;
-}
-
 function cacheDir(ctx: AppContext): string {
   return path.join(ctx.paths.root, "media", "support-agents");
 }
 
-/** True once the ticket has a composite or a remembered fallback (no paid call needed). */
+/** True once the ticket has a cached composite (no paid call needed). */
 export function portraitSettled(ctx: AppContext, ticketId: string): boolean {
-  const dir = cacheDir(ctx);
-  return (
-    existsSync(path.join(dir, `${ticketId}.jpg`)) ||
-    existsSync(path.join(dir, `${ticketId}.fallback`))
-  );
+  return existsSync(path.join(cacheDir(ctx), `${ticketId}.jpg`));
 }
 
-const inflight = new Map<string, Promise<TicketPortrait>>();
+const inflight = new Map<string, Promise<string>>();
 
 /**
- * The portrait this ticket's call uses. First call per ticket generates the composite (single
- * flight, bounded by LIMITS.supportCallPortraitTimeoutMs); a failure is remembered as a marker
- * so later calls serve the base portrait immediately instead of paying again.
+ * Path of this ticket's composite portrait. The first request per ticket generates it (single
+ * flight, bounded by LIMITS.supportCallPortraitTimeoutMs); a failure rejects, nothing is cached,
+ * and the next request (the customer's Retry) generates again.
  */
-export function ticketPortrait(ctx: AppContext, ticket: TicketRow): Promise<TicketPortrait> {
+export function ticketPortrait(ctx: AppContext, ticket: TicketRow): Promise<string> {
   const dir = cacheDir(ctx);
   const composite = path.join(dir, `${ticket.id}.jpg`);
-  const fallback = path.join(dir, `${ticket.id}.fallback`);
-  const base: TicketPortrait = { path: basePortraitPath(ctx), source: "base" };
-  if (existsSync(composite)) return Promise.resolve({ path: composite, source: "composite" });
-  if (existsSync(fallback)) return Promise.resolve(base);
+  if (existsSync(composite)) return Promise.resolve(composite);
   const running = inflight.get(ticket.id);
   if (running) return running;
-  const work = (async (): Promise<TicketPortrait> => {
+  const work = (async (): Promise<string> => {
     try {
       const jpeg = await compositeForTicket(ctx, ticket);
       mkdirSync(dir, { recursive: true });
       const tmp = path.join(ctx.paths.tmp, `${ticket.id}-${Date.now()}.jpg`);
       writeFileSync(tmp, jpeg);
       renameSync(tmp, composite);
-      return { path: composite, source: "composite" };
-    } catch (err) {
-      const e = err as { code?: string; reason?: string; httpStatus?: number | null };
-      console.warn(
-        `[support-call] portrait fallback ticket=${ticket.id} code=${e.code ?? "-"} ` +
-          `reason=${e.reason ?? "-"} status=${e.httpStatus ?? "-"}`,
-      );
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(fallback, `${e.code ?? "error"}/${e.reason ?? "-"}\n`);
-      return base;
+      return composite;
     } finally {
       inflight.delete(ticket.id);
     }

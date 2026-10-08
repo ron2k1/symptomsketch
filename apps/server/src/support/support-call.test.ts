@@ -334,7 +334,6 @@ test("portrait: Nano Banana composites the agent with the ticket's product, cach
   });
   assert.equal(res.status, 200);
   assert.equal(res.res.headers.get("content-type"), "image/jpeg");
-  assert.equal(res.res.headers.get("x-portrait-source"), "composite");
   assert.equal(imageRequests.length, before + 1);
   const req = imageRequests.at(-1)!;
   assert.equal(req.aspectRatio, "3:4");
@@ -346,7 +345,6 @@ test("portrait: Nano Banana composites the agent with the ticket's product, cach
     cookie: support.cookie,
   });
   assert.equal(staff.status, 200);
-  assert.equal(staff.res.headers.get("x-portrait-source"), "composite");
   assert.equal(imageRequests.length, before + 1, "served from the per-ticket cache");
 
   const stranger = await call(h.base, "GET", paths.ticketSupportCallPortrait(ticket.id), {
@@ -355,7 +353,7 @@ test("portrait: Nano Banana composites the agent with the ticket's product, cach
   assert.equal(stranger.status, 404);
 });
 
-test("portrait: a failed composite falls back to the base portrait and is not retried", async () => {
+test("portrait: a failed composite is a provider error, never the stock face; Retry regenerates", async () => {
   useStubImages();
   const ticket = await submitTicket();
   imageFails = true;
@@ -364,13 +362,19 @@ test("portrait: a failed composite falls back to the base portrait and is not re
     const first = await call(h.base, "GET", paths.ticketSupportCallPortrait(ticket.id), {
       cookie: alice.cookie,
     });
-    assert.equal(first.status, 200);
-    assert.equal(first.res.headers.get("x-portrait-source"), "base");
+    assert.ok([502, 504].includes(first.status), `provider error status, got ${first.status}`);
+    assert.ok(
+      first.body.code === "PROVIDER_FAILED" || first.body.code === "PROVIDER_TIMEOUT",
+      `bounded code, got ${first.body.code}`,
+    );
+    assert.notEqual(first.res.headers.get("content-type"), "image/jpeg");
+    imageFails = false;
     const again = await call(h.base, "GET", paths.ticketSupportCallPortrait(ticket.id), {
       cookie: alice.cookie,
     });
-    assert.equal(again.res.headers.get("x-portrait-source"), "base");
-    assert.equal(imageRequests.length, before + 1);
+    assert.equal(again.status, 200);
+    assert.equal(again.res.headers.get("content-type"), "image/jpeg");
+    assert.equal(imageRequests.length, before + 2, "the retry paid for a new composite");
   } finally {
     imageFails = false;
   }

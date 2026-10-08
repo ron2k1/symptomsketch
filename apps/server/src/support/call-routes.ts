@@ -114,9 +114,13 @@ export function registerSupportCall(router: Router, ctx: AppContext): void {
     const session = requireSession(req);
     const ticket = loadTicketForViewer(ctx, session, param(req, "ticketId"));
     if (!portraitSettled(ctx, ticket.id)) limiterFor(ctx).take("supportCallPortrait", session.id);
-    const portrait = await ticketPortrait(ctx, ticket);
-    res.set("X-Portrait-Source", portrait.source);
-    await sendFileWithRange(res, portrait.path, "image/jpeg");
+    let portrait: string;
+    try {
+      portrait = await ticketPortrait(ctx, ticket);
+    } catch (err) {
+      throw providerError("portrait", ticket.id, err);
+    }
+    await sendFileWithRange(res, portrait, "image/jpeg");
   });
 
   router.put(ROUTES.ticketSupportCallAvatar, (req, res) => {
