@@ -14,6 +14,7 @@ import { formatTakeNumber } from "@/lib/format";
 import { CustomerTicketThread } from "./CustomerTicketThread";
 import { SUPPORT_NOTICE } from "./labels";
 import { mergeTickets, productForTake, resolveSupportTake, ticketForTake } from "./model";
+import { SupportCall } from "./SupportCall";
 import { TicketPrepPanel } from "./TicketPrepPanel";
 
 export interface CustomerSupportTabProps {
@@ -182,6 +183,7 @@ export function CustomerSupportTab(props: CustomerSupportTabProps) {
         <h2 id="support-thread-title" className="text-xl font-semibold">
           Your support thread
         </h2>
+        {activeTicketId ? <SupportCall key={activeTicketId} ticketId={activeTicketId} /> : null}
         <CustomerTicketThread
           tickets={tickets}
           activeTicketId={activeTicketId}
