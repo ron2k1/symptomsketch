@@ -124,6 +124,28 @@ describe("ReviewActions accept gating", () => {
     const accept = screen.getByRole("button", { name: REVIEW_ACTION_LABELS.problem.accept });
     expect(accept).toHaveProperty("disabled", true);
   });
+
+  it("offers Send anyway on needs_revision only behind an explicit confirmation", () => {
+    expect(renderActions("problem", "needs_revision")).toHaveProperty("disabled", true);
+    expect(screen.queryByText("Send flagged clip to support")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Send anyway" }));
+    expect(screen.getByText(/Gemini flagged this clip as needing revision/)).toBeTruthy();
+    expect(screen.getByText(/support will see that it\s+was flagged and why/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Send flagged clip to support" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByText("Send flagged clip to support")).toBeNull();
+  });
+
+  it("never offers Send anyway for other verdicts or instructional takes", () => {
+    renderActions("problem", "uncertain");
+    expect(screen.queryByRole("button", { name: "Send anyway" })).toBeNull();
+    cleanup();
+    renderActions("problem", "matches");
+    expect(screen.queryByRole("button", { name: "Send anyway" })).toBeNull();
+    cleanup();
+    renderActions("solution", "needs_revision");
+    expect(screen.queryByRole("button", { name: "Send anyway" })).toBeNull();
+  });
 });
 
 describe("needsPolling", () => {

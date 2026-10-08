@@ -22,13 +22,15 @@ interface ReviewActionsProps {
 
 /**
  * Purpose-specific human review of the exact MP4 (spec 1, 6, 9). A favorable check never decides
- * for the user; needs_revision cannot be accepted; a customer accepting an uncertain or
+ * for the user; needs_revision cannot be accepted, except a customer clip sent through the explicit
+ * "Send anyway" confirmation (the verdict stays and support sees why); a customer accepting an uncertain or
  * unavailable check must leave a note; an instructional take is accepted only when consistent.
  */
 export function ReviewActions({ take, onTakeUpdated, onDecision, onConflict }: ReviewActionsProps) {
   const [note, setNote] = useState("");
   const [pending, setPending] = useState<ReviewDecision | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingOverride, setConfirmingOverride] = useState(false);
   const labels = REVIEW_ACTION_LABELS[take.purpose];
   const uiStatus = take.currentAssessment?.uiStatus ?? null;
   const checking = uiStatus === "pending";
@@ -48,8 +50,11 @@ export function ReviewActions({ take, onTakeUpdated, onDecision, onConflict }: R
   } else if (noteRequired && !trimmedNote) {
     acceptBlocked = "Play the saved clip, then note what remains uncertain before accepting.";
   }
+  // A customer may send a flagged clip only through the explicit confirmation below.
+  const canSendFlagged =
+    !isSolution && uiStatus === "needs_revision" && !!take.sha256 && !!take.currentAssessment;
 
-  async function decide(decision: ReviewDecision) {
+  async function decide(decision: ReviewDecision, overrideCriticFlag = false) {
     if (!take.sha256) return;
     setPending(decision);
     setError(null);
@@ -60,6 +65,7 @@ export function ReviewActions({ take, onTakeUpdated, onDecision, onConflict }: R
         assessmentId: take.currentAssessment?.id ?? null,
         uncertaintyNote: trimmedNote ? trimmedNote.slice(0, LIMITS.reviewNoteMaxChars) : null,
         idempotencyKey: newIdempotencyKey(),
+        ...(overrideCriticFlag ? { overrideCriticFlag: true } : {}),
       });
       onTakeUpdated(res.take);
       onDecision(decision);
@@ -68,6 +74,7 @@ export function ReviewActions({ take, onTakeUpdated, onDecision, onConflict }: R
       setError(errorMessage(err));
     } finally {
       setPending(null);
+      setConfirmingOverride(false);
     }
   }
 
@@ -107,7 +114,7 @@ export function ReviewActions({ take, onTakeUpdated, onDecision, onConflict }: R
         </Button>
         <Button
           type="button"
-          variant="outline"
+          variant={canSendFlagged ? "default" : "outline"}
           className="min-h-11"
           disabled={pending !== null}
           onClick={() => decide("refine")}
@@ -129,6 +136,50 @@ export function ReviewActions({ take, onTakeUpdated, onDecision, onConflict }: R
         ) : null}
       </div>
       {acceptBlocked ? <p className="text-[13px] text-muted-foreground">{acceptBlocked}</p> : null}
+      {canSendFlagged && !confirmingOverride ? (
+        <Button
+          type="button"
+          variant="ghost"
+          className="min-h-11"
+          disabled={pending !== null}
+          onClick={() => setConfirmingOverride(true)}
+        >
+          Send anyway
+        </Button>
+      ) : null}
+      {canSendFlagged && confirmingOverride ? (
+        <div
+          role="alertdialog"
+          aria-labelledby={`send-flagged-${take.id}`}
+          className="space-y-2 rounded-lg border border-magenta/60 bg-magenta-soft p-3"
+        >
+          <p id={`send-flagged-${take.id}`} className="text-sm text-foreground">
+            Gemini flagged this clip as needing revision. If you send it, support will see that it
+            was flagged and why. The check result does not change.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-11"
+              disabled={pending !== null}
+              onClick={() => decide("accept", true)}
+            >
+              {spinner("accept")}
+              Send flagged clip to support
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="min-h-11"
+              disabled={pending !== null}
+              onClick={() => setConfirmingOverride(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : null}
       {error ? (
         <p role="alert" className="text-sm text-destructive">
           {error}
