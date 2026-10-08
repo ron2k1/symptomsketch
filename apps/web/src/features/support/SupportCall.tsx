@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Hand, Mic, MicOff, PhoneOff, Send, Video } from "lucide-react";
 import {
   LIMITS,
@@ -8,39 +8,17 @@ import {
 } from "@symptomsketch/contracts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { saveSupportCallTranscript } from "@/lib/api";
-import { newIdempotencyKey } from "@/lib/ids";
 import { cn } from "@/lib/utils";
+import { useSupportCall } from "./call/CallProvider";
+import { SamVideo } from "./call/SamVideo";
 import {
   INITIAL_CALL_VIEW,
-  SupportCallController,
+  formatClock,
   type CallEnded,
   type CallView,
-} from "./support-call-controller";
-import { formatClock } from "./support-call-model";
+} from "./support-call-model";
 
 const BASE_PORTRAIT = { src: "/assets/support-agent.jpg", width: 860, height: 1152 } as const;
-
-function useSupportCall(onEnded?: (ended: CallEnded) => void) {
-  const [view, setView] = useState<CallView>(INITIAL_CALL_VIEW);
-  const endedRef = useRef(onEnded);
-  useEffect(() => {
-    endedRef.current = onEnded;
-  }, [onEnded]);
-  const [controller] = useState(
-    () => new SupportCallController(setView, (ended) => endedRef.current?.(ended)),
-  );
-  // Billing runs while the session is open: leave the page or the tab -> end + disconnect.
-  useEffect(() => {
-    const onPageHide = () => controller.dispose();
-    window.addEventListener("pagehide", onPageHide);
-    return () => {
-      window.removeEventListener("pagehide", onPageHide);
-      controller.dispose();
-    };
-  }, [controller]);
-  return { view, controller };
-}
 
 export function SupportCallCredits({ className }: { className?: string }) {
   return (
@@ -100,49 +78,44 @@ export interface SupportCallProps {
   onEnded?(ended: CallEnded): void;
 }
 
-type SaveState = "idle" | "saving" | "saved" | "failed";
-
-/** After end_call + disconnect, the final lines go on the ticket for Demo Support. */
-function useTranscriptSave(ticketId: string, onEnded?: (ended: CallEnded) => void) {
-  const [saveState, setSaveState] = useState<SaveState>("idle");
-  const save = useCallback(
-    (ended: CallEnded) => {
-      setSaveState("saving");
-      // One key per finished call: a retried POST of the same call returns the same record.
-      saveSupportCallTranscript(ticketId, { ...ended, idempotencyKey: newIdempotencyKey() })
-        .then(
-          () => setSaveState("saved"),
-          () => setSaveState("failed"),
-        )
-        .finally(() => onEnded?.(ended));
-    },
-    [ticketId, onEnded],
-  );
-  return { saveState, save, reset: () => setSaveState("idle") };
-}
-
 /**
  * "Talk to support now": a live call with a fictional, clearly-AI support agent (Reactor Vidu S2
  * Avatar) who already knows this ticket. Voice (mic only after the customer turns it on) or typed
  * messages; capped at about four minutes; ends and disconnects on End call, unmount or page hide.
  */
 export function SupportCall({ ticketId, onEnded }: SupportCallProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const transcript = useTranscriptSave(ticketId, onEnded);
-  const { view, controller } = useSupportCall(transcript.save);
+  const call = useSupportCall();
+  // The call lives in the app-root CallProvider; this view shows it when it is about this ticket.
+  const mine = call.ticketId === ticketId;
+  const view = mine ? call.view : INITIAL_CALL_VIEW;
+  const saveState = mine ? call.saveState : "idle";
+  const elsewhere = !mine && call.view.phase !== "idle" && call.view.phase !== "ended";
   const [draft, setDraft] = useState("");
   const idle = view.phase === "idle";
   const live = view.phase === "live";
   const active = !idle && view.phase !== "ended";
 
+  const { registerFullView, onEnded: subscribeEnded } = call;
+  useEffect(() => (mine ? registerFullView() : undefined), [mine, registerFullView]);
+  const endedRef = useRef(onEnded);
+  useEffect(() => {
+    endedRef.current = onEnded;
+  }, [onEnded]);
+  useEffect(
+    () =>
+      subscribeEnded((id, ended) => {
+        if (id === ticketId) endedRef.current?.(ended);
+      }),
+    [subscribeEnded, ticketId],
+  );
+
   function start() {
-    transcript.reset();
-    void controller.start(ticketId, () => videoRef.current);
+    call.start(ticketId);
   }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (await controller.say(draft)) setDraft("");
+    if (await call.say(draft)) setDraft("");
   }
 
   return (
@@ -175,13 +148,7 @@ export function SupportCall({ ticketId, onEnded }: SupportCallProps) {
 
       {idle ? null : (
         <div className="relative mx-auto aspect-[864/1152] w-full max-w-sm overflow-hidden rounded-xl bg-sand-soft">
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            aria-label={`${SUPPORT_CALL_AGENT_NAME}, AI support agent video`}
-            className="absolute inset-0 h-full w-full object-cover"
-          />
+          <SamVideo media={view.media} />
           {!view.hasVideo && view.portraitUrl ? (
             <img
               src={view.portraitUrl}
@@ -219,21 +186,26 @@ export function SupportCall({ ticketId, onEnded }: SupportCallProps) {
 
       {idle || view.phase === "ended" ? (
         <div className="flex flex-col items-start gap-2">
-          <Button type="button" className="min-h-11" onClick={start}>
+          <Button type="button" className="min-h-11" disabled={elsewhere} onClick={start}>
             <Video aria-hidden />
             {idle ? SUPPORT_CALL_COPY.start : "Talk to support again"}
           </Button>
-          {view.phase === "ended" && transcript.saveState !== "idle" ? (
+          {elsewhere ? (
+            <p role="status" className="text-sm text-muted-foreground">
+              A call with {SUPPORT_CALL_AGENT_NAME} is running on another ticket. End it first.
+            </p>
+          ) : null}
+          {view.phase === "ended" && saveState !== "idle" ? (
             <p
               role="status"
               className={cn(
                 "text-sm",
-                transcript.saveState === "failed" ? "text-warning" : "text-muted-foreground",
+                saveState === "failed" ? "text-warning" : "text-muted-foreground",
               )}
             >
-              {transcript.saveState === "saving"
+              {saveState === "saving"
                 ? "Adding the call transcript to your ticket…"
-                : transcript.saveState === "saved"
+                : saveState === "saved"
                   ? SUPPORT_CALL_COPY.transcriptSaved
                   : SUPPORT_CALL_COPY.transcriptFailed}
             </p>
@@ -247,7 +219,7 @@ export function SupportCall({ ticketId, onEnded }: SupportCallProps) {
             className="min-h-11"
             aria-pressed={view.micOn}
             disabled={!live}
-            onClick={() => void controller.toggleMic()}
+            onClick={call.toggleMic}
           >
             {view.micOn ? <Mic aria-hidden /> : <MicOff aria-hidden />}
             {view.micOn ? "Mic on" : "Turn mic on"}
@@ -257,17 +229,12 @@ export function SupportCall({ ticketId, onEnded }: SupportCallProps) {
             variant="outline"
             className="min-h-11"
             disabled={!live}
-            onClick={() => void controller.interrupt()}
+            onClick={call.interrupt}
           >
             <Hand aria-hidden />
             Interrupt
           </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            className="min-h-11"
-            onClick={() => void controller.end()}
-          >
+          <Button type="button" variant="destructive" className="min-h-11" onClick={call.end}>
             <PhoneOff aria-hidden />
             End call
           </Button>

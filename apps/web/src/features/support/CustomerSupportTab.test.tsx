@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CallProvider } from "./call/CallProvider";
 import { CustomerSupportTab } from "./CustomerSupportTab";
 import { bodiesOf, fixtureCase, fixtureTake, fixtureTicket, mockApi } from "./test-fixtures";
 
@@ -14,13 +15,15 @@ const MESSAGE = {
 function renderTab(props: Partial<Parameters<typeof CustomerSupportTab>[0]> = {}) {
   return render(
     <MemoryRouter>
-      <CustomerSupportTab
-        caseId="case_1"
-        caseData={fixtureCase()}
-        selectedTakeId="take_a"
-        onSelectTake={() => {}}
-        {...props}
-      />
+      <CallProvider>
+        <CustomerSupportTab
+          caseId="case_1"
+          caseData={fixtureCase()}
+          selectedTakeId="take_a"
+          onSelectTake={() => {}}
+          {...props}
+        />
+      </CallProvider>
     </MemoryRouter>,
   );
 }

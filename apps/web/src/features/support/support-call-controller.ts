@@ -9,8 +9,6 @@ import {
   SUPPORT_CALL_AGENT_NAME,
   SUPPORT_CALL_COPY,
   type SupportCallBriefResponse,
-  type SupportCallPhase,
-  type SupportCallTranscriptLine,
 } from "@symptomsketch/contracts";
 import {
   createSupportCallToken,
@@ -20,53 +18,17 @@ import {
   saveSupportCallAvatar,
 } from "@/lib/api";
 import {
-  EMPTY_TRANSCRIPT,
+  INITIAL_CALL_VIEW,
   addTypedLine,
   applyTranscript,
   callCapSeconds,
   finalLines,
   phaseFromSession,
-  type TranscriptState,
+  type CallEnded,
+  type CallView,
 } from "./support-call-model";
 
-export interface CallView {
-  phase: SupportCallPhase;
-  /** Plain sub-step under the phase label, e.g. "Building the avatar". */
-  detail: string | null;
-  error: string | null;
-  transcript: TranscriptState;
-  elapsedSeconds: number;
-  capSeconds: number;
-  micOn: boolean;
-  micNotice: string | null;
-  /** Object URL of the portrait this call uses (shown until video arrives). */
-  portraitUrl: string | null;
-  hasVideo: boolean;
-  /** Measured create_avatar time (upload excluded), null when an avatar was re-attached. */
-  avatarMs: number | null;
-  endReason: string | null;
-}
-
-export const INITIAL_CALL_VIEW: CallView = {
-  phase: "idle",
-  detail: null,
-  error: null,
-  transcript: EMPTY_TRANSCRIPT,
-  elapsedSeconds: 0,
-  capSeconds: callCapSeconds(null),
-  micOn: false,
-  micNotice: null,
-  portraitUrl: null,
-  hasVideo: false,
-  avatarMs: null,
-  endReason: null,
-};
-
-export interface CallEnded {
-  lines: SupportCallTranscriptLine[];
-  durationSeconds: number;
-  endReason: string | null;
-}
+export { INITIAL_CALL_VIEW, type CallEnded, type CallView };
 
 const AVATAR_READY_TIMEOUT_MS = 120_000;
 const LIVE_TIMEOUT_MS = 60_000;
@@ -97,9 +59,6 @@ class CallFailure extends Error {}
 export class SupportCallController {
   private view: CallView = INITIAL_CALL_VIEW;
   private model: ViduS2AvatarModel | null = null;
-  /** The <video> mounts once the call leaves idle, so it is looked up when output arrives. */
-  private getVideo: () => HTMLVideoElement | null = () => null;
-  private video: HTMLVideoElement | null = null;
   private out: MediaStream | null = null;
   private mic: MediaStreamTrack | null = null;
   private unsubs: Array<() => void> = [];
@@ -127,10 +86,9 @@ export class SupportCallController {
   }
 
   /** From an explicit click only. */
-  async start(ticketId: string, getVideo: () => HTMLVideoElement | null): Promise<void> {
+  async start(ticketId: string): Promise<void> {
     if (this.busy) return;
     this.reset();
-    this.getVideo = getVideo;
     const abort = new AbortController();
     this.abort = abort;
     this.set({ ...INITIAL_CALL_VIEW, phase: "preparing", detail: "Reading your ticket" });
@@ -166,7 +124,7 @@ export class SupportCallController {
       await this.waitFor((s) => s.phase === "live", LIVE_TIMEOUT_MS, "start_call");
       this.ensureOpen();
       this.liveAt = Date.now();
-      this.set({ phase: "live", detail: null });
+      this.set({ phase: "live", detail: null, liveAt: this.liveAt });
       this.tick = window.setInterval(() => this.onTick(), 500);
     } catch (err) {
       if (this.closing) return;
@@ -266,20 +224,18 @@ export class SupportCallController {
     this.set(patch);
   }
 
-  /** Both output tracks go on ONE MediaStream on ONE <video> (audio + lip-sync together). */
+  /**
+   * Both output tracks go on ONE MediaStream, published in the view: the app-root call provider
+   * plays its audio once and every on-screen <video> (full view, dock, PiP) shows its video.
+   */
   private attach(track: MediaStreamTrack, isVideo: boolean): void {
-    const video = this.getVideo();
-    if (!video || this.closing) return;
-    this.video = video;
+    if (this.closing) return;
     if (!this.out) this.out = new MediaStream();
     for (const old of this.out.getTracks()) {
       if (old.kind === track.kind && old.id !== track.id) this.out.removeTrack(old);
     }
     if (!this.out.getTracks().some((t) => t.id === track.id)) this.out.addTrack(track);
-    if (video.srcObject !== this.out) video.srcObject = this.out;
-    video.muted = false;
-    void video.play().catch(() => undefined);
-    if (isVideo) this.set({ hasVideo: true });
+    this.set({ media: this.out, ...(isVideo ? { hasVideo: true } : {}) });
   }
 
   private waitFor(
@@ -425,14 +381,10 @@ export class SupportCallController {
     for (const off of this.unsubs.splice(0)) off();
     this.mic?.stop();
     this.mic = null;
-    if (this.video && this.video.srcObject === this.out) {
-      this.video.pause();
-      this.video.srcObject = null;
-    }
     for (const t of this.out?.getTracks() ?? []) t.stop();
     this.out = null;
     this.model = null;
-    this.set({ hasVideo: false });
+    this.set({ hasVideo: false, media: null });
   }
 
   private ensureOpen(): void {
