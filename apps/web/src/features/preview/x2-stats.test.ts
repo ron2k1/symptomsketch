@@ -49,7 +49,7 @@ describe("readoutCells", () => {
       { key: "fps", label: "Output", value: "24.0 fps" },
       { key: "rtt", label: "Round trip", value: "42 ms" },
       { key: "planned", label: "Gemini planned in", value: "6.1 s" },
-      { key: "applied", label: "X2 applied in", value: "118 ms" },
+      { key: "applied", label: "X2 accepted prompt in", value: "118 ms" },
       { key: "connect", label: "Connected in", value: "2.1 s" },
     ]);
   });

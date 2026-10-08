@@ -69,7 +69,7 @@ export function readoutCells(input: {
     cell("fps", "Output", stats.fps, (v) => `${v.toFixed(1)} fps`),
     cell("rtt", "Round trip", stats.rttMs, ms),
     cell("planned", "Gemini planned in", measured(input.plannedMs), sec),
-    cell("applied", "X2 applied in", stats.appliedMs, ms),
+    cell("applied", "X2 accepted prompt in", stats.appliedMs, ms),
     cell("connect", "Connected in", stats.connectMs, sec),
   ];
   return cells.filter((c): c is ReadoutCell => c !== null);
