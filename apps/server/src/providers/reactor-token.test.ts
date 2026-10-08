@@ -1,7 +1,13 @@
 // Offline contract tests for the Reactor token adapter (fake fetch, no network, no secrets).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mintX2Token, ReactorTokenError, X2_MODEL_RESOURCE } from "./reactor-token.ts";
+import {
+  mintReactorToken,
+  mintX2Token,
+  ReactorTokenError,
+  VIDU_S2_AVATAR_MODEL_RESOURCE,
+  X2_MODEL_RESOURCE,
+} from "./reactor-token.ts";
 
 const FAKE_KEY = "test-key-not-real";
 
@@ -62,6 +68,46 @@ test("sends the documented scoped request and maps the response", async () => {
       },
     ],
   });
+});
+
+test("mintReactorToken scopes the JWT to the requested model (Vidu S2 Avatar)", async () => {
+  const expiresAt = Math.floor(Date.now() / 1000) + 600;
+  const { impl, calls } = fakeFetch(() => json(200, { jwt: "x.y.z", expires_at: expiresAt }));
+
+  const token = await mintReactorToken({
+    apiKey: FAKE_KEY,
+    model: VIDU_S2_AVATAR_MODEL_RESOURCE,
+    expiresAfterSeconds: 600,
+    maxSessionDurationSeconds: 300,
+    fetchImpl: impl,
+  });
+
+  assert.equal(VIDU_S2_AVATAR_MODEL_RESOURCE, "reactor/vidu-s2-avatar");
+  assert.equal(token.jwt, "x.y.z");
+  assert.equal(token.maxSessions, 1);
+  assert.deepEqual(calls[0]!.body, {
+    expires_after: 600,
+    authorization_details: [
+      {
+        type: "session",
+        resources: { models: { match: ["reactor/vidu-s2-avatar"] } },
+        constraints: { max_sessions: 1, max_session_duration_seconds: 300 },
+      },
+    ],
+  });
+});
+
+test("mintReactorToken defaults to X2 and rejects a blank model", async () => {
+  const { impl, calls } = fakeFetch(() => json(200, { jwt: "a.b.c", expires_at: 2e9 }));
+  await mintReactorToken({ apiKey: FAKE_KEY, fetchImpl: impl });
+  const body = calls[0]!.body as {
+    authorization_details: { resources: { models: { match: string[] } } }[];
+  };
+  assert.deepEqual(body.authorization_details[0]!.resources.models.match, [X2_MODEL_RESOURCE]);
+  await assert.rejects(
+    mintReactorToken({ apiKey: FAKE_KEY, model: " ", fetchImpl: impl }),
+    RangeError,
+  );
 });
 
 test("missing or blank key is CONFIG_MISSING without a network call", async () => {

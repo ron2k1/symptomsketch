@@ -1,6 +1,7 @@
-// Reactor X2 scoped-token adapter (spec 8). Exchanges the long-lived REACTOR_API_KEY for a
-// short-lived JWT the browser uses to open exactly one X2 session. Verified live 2026-10-08
-// against POST https://api.reactor.inc/tokens (see docs/providers/reactor-x2.md).
+// Reactor scoped-token adapter (spec 8). Exchanges the long-lived REACTOR_API_KEY for a
+// short-lived JWT the browser uses to open exactly one session of one model: xmax/x2 for the
+// preview, reactor/vidu-s2-avatar for the live support call. Verified live 2026-10-08 against
+// POST https://api.reactor.inc/tokens (docs/providers/reactor-x2.md, reactor-vidu-s2-avatar.md).
 //
 // Secret hygiene: this module never logs. Errors carry only a bounded code, a bounded reason, and
 // the upstream HTTP status; never the key, the JWT, or a provider response body.
@@ -9,6 +10,8 @@ import { z } from "zod";
 
 export const REACTOR_API_URL = "https://api.reactor.inc";
 export const X2_MODEL_RESOURCE = "xmax/x2";
+/** Live talking-avatar model behind the "Talk to support now" call. */
+export const VIDU_S2_AVATAR_MODEL_RESOURCE = "reactor/vidu-s2-avatar";
 
 /** Provider ceilings from docs.reactor.inc/authentication. */
 const MAX_SESSIONS_RANGE = { min: 1, max: 500 } as const;
@@ -79,6 +82,14 @@ export interface MintX2TokenOptions {
   apiUrl?: string;
 }
 
+export interface MintReactorTokenOptions extends MintX2TokenOptions {
+  /** Model resource the session may open. Default xmax/x2. */
+  model?: string;
+}
+
+/** Same shape for every model; the name predates the avatar call. */
+export type ReactorToken = X2Token;
+
 export interface X2Token {
   /** Short-lived session JWT. Hand it to the browser once; never log or persist it. */
   jwt: string;
@@ -138,7 +149,14 @@ function errorFromStatus(status: number, retryAfter: string | null): ReactorToke
  * exactly one session: X2 reset() keeps that session, but disconnect() ends it, so a fresh
  * connection needs a freshly minted token.
  */
-export async function mintX2Token(options: MintX2TokenOptions): Promise<X2Token> {
+export function mintX2Token(options: MintX2TokenOptions): Promise<X2Token> {
+  return mintReactorToken({ ...options, model: X2_MODEL_RESOURCE });
+}
+
+/** Mint a JWT scoped to one Reactor model resource (default xmax/x2). */
+export async function mintReactorToken(options: MintReactorTokenOptions): Promise<ReactorToken> {
+  const model = options.model ?? X2_MODEL_RESOURCE;
+  if (!model.trim()) throw new RangeError("model must be a non-empty model resource");
   const apiKey = options.apiKey?.trim();
   if (!apiKey) throw new ReactorTokenError("CONFIG_MISSING", "missing_api_key");
 
@@ -168,7 +186,7 @@ export async function mintX2Token(options: MintX2TokenOptions): Promise<X2Token>
         authorization_details: [
           {
             type: "session",
-            resources: { models: { match: [X2_MODEL_RESOURCE] } },
+            resources: { models: { match: [model] } },
             constraints: {
               max_sessions: maxSessions,
               max_session_duration_seconds: sessionDuration,
@@ -204,3 +222,6 @@ export async function mintX2Token(options: MintX2TokenOptions): Promise<X2Token>
     maxSessions: echoed ?? maxSessions,
   };
 }
+
+/** MiniMax FastH3 (Story mode): text/image -> video with synchronized audio, queue + player. */
+export const FAST_H3_MODEL_RESOURCE = "reactor/fast-h3";
