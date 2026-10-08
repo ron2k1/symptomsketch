@@ -1,5 +1,6 @@
 import { useState, type ReactNode, type RefObject } from "react";
 import { LoaderCircle, TriangleAlert } from "lucide-react";
+import { ReactorMark } from "@/components/ReactorMark";
 import { formatDuration, formatTakeNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { STAGE_HEIGHT, STAGE_WIDTH, stageFit } from "./geometry";
@@ -42,6 +43,7 @@ export function StageScreen(p: StageScreenProps) {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <Pill tone="neon">Saved · {formatTakeNumber(p.take.number)}</Pill>
+            <ReactorMark size="sm" variant="soft" label="Recorded from Reactor X2" />
             <Pill tone="muted">{p.purposeLabel}</Pill>
             <Pill tone="muted">{p.take.stateLabel}</Pill>
           </div>
@@ -56,7 +58,7 @@ export function StageScreen(p: StageScreenProps) {
           muted
           playsInline
           autoPlay
-          aria-label="Live generated preview"
+          aria-label="Live Reactor X2 output"
         />
         {coverWithReference && <Still src={p.referenceImageUrl} alt={p.productLabel} />}
         {p.take && takeSrc && (
@@ -84,9 +86,7 @@ export function StageScreen(p: StageScreenProps) {
           <div className="pointer-events-none absolute inset-x-3 top-3 z-10 flex items-start justify-between gap-2">
             <div className="flex flex-wrap items-center gap-2">
               {p.isLive ? (
-                <Pill tone="neon">
-                  <span className="size-2 animate-pulse rounded-full bg-neon" aria-hidden /> Live
-                </Pill>
+                <ReactorMark size="md" live label="Live · Reactor X2" />
               ) : (
                 <Pill tone="muted">Reference</Pill>
               )}

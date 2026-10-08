@@ -27,7 +27,7 @@ import { useCatalog } from "./useCatalog";
 /**
  * Route "/": landing built on the adapted SmoothScrollHero (spec 6, 25), styled after the concept.
  * Owns the catalog fetch, product selection, the access-code gate and case creation.
- * Nothing here calls Gemini or Reactor; selecting a product only creates the owned case.
+ * Nothing here calls Gemini or Reactor X2; selecting a product only creates the owned case.
  */
 export function LandingPage() {
   const navigate = useNavigate();
@@ -113,7 +113,9 @@ export function LandingPage() {
         title={LANDING_COPY.title}
         titleHighlight={LANDING_COPY.titleHighlight}
         description={LANDING_COPY.description}
+        engine={LANDING_COPY.engine}
         primaryActionLabel={LANDING_COPY.primaryAction}
+        primaryActionNote={LANDING_COPY.primaryActionNote}
         aside={<ExampleWorkspace />}
         productsHeading={LANDING_COPY.productsHeading}
         productsHeadingHighlight={LANDING_COPY.productsHeadingHighlight}
@@ -146,7 +148,7 @@ export function LandingPage() {
       />
       <footer className="border-t border-border px-4 py-8 text-center">
         <p className="hud-label">
-          SymptomSketch · Generated clips illustrate what you describe. They do not diagnose a
+          SymptomSketch · Reactor X2 clips illustrate what you describe. They do not diagnose a
           fault.
         </p>
       </footer>

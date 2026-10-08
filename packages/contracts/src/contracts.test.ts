@@ -3,15 +3,19 @@ import { test } from "node:test";
 import {
   ActionPlan,
   ApiError,
+  CAPTURE_REASON_LABELS,
   CatalogFixtureFile,
   CatalogProduct,
   ClipAssessment,
   CreatePlanRequest,
+  ERROR_COPY,
   ERROR_HTTP_STATUS,
   ErrorCode,
   HighlightSpan,
+  PREVIEW_STATUS_COPY,
   REVIEW_ACTION_LABELS,
   ROUTES,
+  UI_STATE_COPY,
   deriveAssessmentStatus,
   paths,
   takeFilename,
@@ -185,4 +189,17 @@ test("plan request and labels", () => {
     }),
     "Incomplete",
   );
+});
+
+test("stage copy names the engine: Reactor X2, never a generic visual workspace", () => {
+  const copy = [
+    CAPTURE_REASON_LABELS.disconnected,
+    UI_STATE_COPY.connecting.copy,
+    PREVIEW_STATUS_COPY.connecting,
+    ERROR_COPY.REACTOR_UNAVAILABLE,
+  ];
+  for (const text of copy) {
+    assert.match(text, /Reactor X2/, text);
+    assert.doesNotMatch(text, /visual workspace/i, text);
+  }
 });

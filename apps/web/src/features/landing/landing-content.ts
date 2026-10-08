@@ -9,8 +9,11 @@ export const LANDING_COPY = {
   tagline: "Changing the way support is given",
   title: "Show what happened.",
   titleHighlight: "happened",
-  description: "Give support the context a phone call cannot.",
+  description:
+    "Reactor X2 turns one photo of your product into a live, steerable reenactment of what it did. Steer it in plain words, clip the moment, and send support the clip.",
+  engine: { name: "Reactor X2", description: "a real-time world model" },
   primaryAction: "Choose your product",
+  primaryActionNote: "The live Reactor X2 session starts inside your case, not on this page.",
   supportLink: "Support workspace",
   productsHeading: "What do you need help with?",
   productsHeadingHighlight: "help",
@@ -19,10 +22,10 @@ export const LANDING_COPY = {
   demoDisclosure: "Demo support is hosted inside SymptomSketch. No manufacturer is contacted.",
   retentionNote: `Cases and photos are kept for ${LIMITS.caseRetentionDays} days, then deleted. You can delete a case sooner from its workspace.`,
   processingNote:
-    "Your photo and description are sent to Gemini and Reactor only when you ask for a plan or preview.",
+    "Your photo and description are sent to Gemini and Reactor X2 only when you ask for a plan or preview.",
 } as const;
 
-/** Static illustration content for the Example workspace frame (not a live case). */
+/** Static illustration content for the Example workspace frame (a real demo photo, not a take). */
 export const EXAMPLE_WORKSPACE = {
   image: {
     src: "/assets/demo-vacuum.jpg",
@@ -31,6 +34,7 @@ export const EXAMPLE_WORKSPACE = {
     height: 1067,
   } satisfies HeroImage,
   productName: "Robot vacuum",
+  sourceCaption: "starts from your photo",
   whatHappened: { before: "It jerks ", marks: ["backward", "once"], after: "." },
   clipDuration: "0:06",
 } as const;

@@ -1,15 +1,16 @@
 import { Play } from "lucide-react";
 import type { ReactNode } from "react";
+import { ReactorMark } from "@/components/ReactorMark";
 import { cn } from "@/lib/utils";
 import { EXAMPLE_WORKSPACE } from "./landing-content";
 
 /**
  * Static landing illustration (spec 6), laid out like the concept mockup: the product scene in the
  * sand frame with three cards floating over its edges (stacked under it on narrow screens).
- * Nothing here is live; no provider session starts from this view.
+ * The frame shows the real demo photo Reactor X2 starts from; no provider session starts here.
  */
 export function ExampleWorkspace() {
-  const { image, productName, whatHappened, clipDuration } = EXAMPLE_WORKSPACE;
+  const { image, productName, sourceCaption, whatHappened, clipDuration } = EXAMPLE_WORKSPACE;
   return (
     <figure className="relative mx-auto w-full max-w-4xl md:px-10 md:pb-10">
       <div className="holo-tray p-3 sm:p-6">
@@ -23,8 +24,9 @@ export function ExampleWorkspace() {
             decoding="async"
             className="aspect-[16/9] h-auto w-full object-cover object-[50%_85%]"
           />
-          <figcaption className="absolute top-3 right-3 rounded-full bg-surface/90 px-3 py-1 text-xs font-medium shadow-[var(--glow)] backdrop-blur">
-            Example workspace · not live
+          <figcaption className="absolute top-3 right-3 flex items-center gap-2 rounded-full bg-surface/90 py-1 pr-3 pl-1 text-xs font-medium shadow-[var(--glow)] backdrop-blur">
+            <ReactorMark size="sm" label="Reactor X2" />
+            {sourceCaption}
           </figcaption>
         </div>
       </div>
@@ -50,7 +52,8 @@ export function ExampleWorkspace() {
         </FloatCard>
         <FloatCard
           label="A clip you can share"
-          className="md:absolute md:bottom-0 md:left-1/2 md:w-64 md:-translate-x-1/2"
+          badge={<ReactorMark size="sm" variant="soft" />}
+          className="md:absolute md:bottom-0 md:left-1/2 md:w-72 md:-translate-x-1/2"
         >
           <span className="relative block overflow-hidden rounded-lg">
             <img
@@ -76,10 +79,12 @@ export function ExampleWorkspace() {
 
 function FloatCard({
   label,
+  badge,
   className,
   children,
 }: {
   label: string;
+  badge?: ReactNode;
   className?: string;
   children: ReactNode;
 }) {
@@ -90,7 +95,10 @@ function FloatCard({
         className,
       )}
     >
-      <span className="text-[15px] font-bold">{label}</span>
+      <span className="flex items-center justify-between gap-2 text-[15px] font-bold">
+        {label}
+        {badge}
+      </span>
       {children}
     </div>
   );

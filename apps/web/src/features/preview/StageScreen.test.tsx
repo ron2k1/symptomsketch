@@ -47,4 +47,11 @@ describe("StageScreen chips", () => {
     expect(frame.contains(screen.getByText(/Live/))).toBe(true);
     expect(frame.contains(screen.getByText("AI-generated reenactment"))).toBe(true);
   });
+
+  it("names Reactor X2 in the live badge, in the Reactor face", () => {
+    const { container } = render(<StageScreen {...props({ showLiveVideo: true, isLive: true })} />);
+    const badge = frameOf(container).querySelector("[data-reactor-mark]");
+    expect(badge?.textContent).toMatch(/Live · Reactor X2/);
+    expect(badge?.className).toContain("font-reactor");
+  });
 });

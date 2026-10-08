@@ -16,9 +16,9 @@ function reactorDetail(code: string): string {
     case "RATE_LIMITED":
       return ERROR_COPY.RATE_LIMITED;
     case "invalid_image":
-      return "The visual workspace could not use this product photo. Try a clearer photo.";
+      return "Reactor X2 could not use this product photo. Try a clearer photo.";
     case "invalid_command":
-      return "The visual workspace did not accept this movement description. Refine it and retry.";
+      return "Reactor X2 did not accept this movement description. Refine it and retry.";
     case "DISCONNECTED":
     case "TRANSPORT_ERROR":
     case "SESSION_TERMINAL":
@@ -45,7 +45,7 @@ export const STAGE_ERRORS = {
 export const STOP_NOTICES = {
   idle: "Preview stopped after 90 seconds without activity.",
   max: "Preview stopped at the 5 minute session limit.",
-  lease: "The preview session ended. Start it again when you are ready.",
+  lease: "The Reactor X2 session ended. Start it again when you are ready.",
   reference: "The product reference changed. Start the preview again to use it.",
 } as const;
 export type StopNoticeKey = keyof typeof STOP_NOTICES;

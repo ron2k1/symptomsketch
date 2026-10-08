@@ -35,7 +35,11 @@ export interface SmoothScrollHeroProps {
   /** Word inside `title` that gets the sand underline. */
   titleHighlight?: string;
   description: string;
+  /** "Powered by" line under the headline: the engine name renders as the ReactorMark chip. */
+  engine?: { name: string; description: string };
   primaryActionLabel: string;
+  /** One truthful line under the primary action (e.g. where the live session starts). */
+  primaryActionNote?: string;
   /** Parent-owned illustration shown under the copy (e.g. the Example workspace). */
   aside?: ReactNode;
   productsHeading: string;

@@ -80,7 +80,7 @@ interface LiveSession {
 }
 
 const CORRECTION_DECLINED =
-  "The visual workspace did not accept that update. The preview keeps the previous movement.";
+  "Reactor X2 did not accept that update. The preview keeps the previous movement.";
 const MODERATION_WARNING = "The provider flagged part of this request. Consider rephrasing it.";
 
 /** The structured action that selects the motion sketch (null when the plan carries none). */

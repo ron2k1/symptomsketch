@@ -18,6 +18,7 @@ import "lenis/dist/lenis.css";
 import { motion, useReducedMotion } from "framer-motion";
 import { ArrowRight, ChevronDown, Headset } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
+import { ReactorMark } from "@/components/ReactorMark";
 import { SandHighlight } from "@/components/SandHighlight";
 import { Button } from "@/components/ui/button";
 import { ProductChoices } from "@/features/landing/ProductChoices";
@@ -168,7 +169,9 @@ function HeroCopy({
   title,
   titleHighlight,
   description,
+  engine,
   primaryActionLabel,
+  primaryActionNote,
   onChooseProduct,
 }: WithChoose) {
   return (
@@ -179,7 +182,18 @@ function HeroCopy({
       <h1 className="text-[clamp(2.5rem,5.6vw,4.5rem)] leading-[1.04] font-extrabold tracking-[-0.04em]">
         <SandHighlight text={title} highlight={titleHighlight} />
       </h1>
-      <p className="text-[clamp(1.1rem,1.9vw,1.45rem)] text-muted-foreground">{description}</p>
+      <p className="max-w-3xl text-[clamp(1.1rem,1.9vw,1.45rem)] text-muted-foreground">
+        {description}
+      </p>
+      {engine && (
+        <p className="flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1.5 rounded-2xl border border-reactor-ink/15 bg-surface px-3 py-2 text-[15px] shadow-[var(--glow)]">
+          <span className="text-muted-foreground">Powered by</span>
+          <ReactorMark size="lg" label={engine.name} />
+          <span className="font-reactor text-[13px] tracking-[0.04em] text-foreground">
+            {engine.description}
+          </span>
+        </p>
+      )}
       <div className="flex flex-col items-center gap-3 pt-2">
         <Button
           size="lg"
@@ -189,7 +203,9 @@ function HeroCopy({
           {primaryActionLabel}
           <ArrowRight aria-hidden />
         </Button>
-        <span className="text-xs text-muted-foreground">No AI runs on this page</span>
+        {primaryActionNote && (
+          <span className="text-xs text-muted-foreground">{primaryActionNote}</span>
+        )}
       </div>
     </div>
   );

@@ -92,7 +92,7 @@ export const REVIEW_STATE_LABELS: Record<ReviewState, string> = {
 export const CAPTURE_REASON_LABELS: Record<CaptureReason, string> = {
   output_timeout: "No generated output arrived in time",
   output_stalled: "Generated output stalled",
-  disconnected: "The visual workspace disconnected",
+  disconnected: "The Reactor X2 session disconnected",
   user_cancelled: "Recording cancelled",
 };
 
@@ -153,7 +153,7 @@ export const UI_STATE_COPY: Record<UiState, { copy: string; actions: string }> =
   empty: { copy: "Make the movement easier to explain", actions: "Start demo or upload a photo" },
   product_generation: { copy: "Creating your product reference", actions: "Cancel" },
   planning: { copy: "Understanding the action", actions: "Preserve editable input" },
-  connecting: { copy: "Connecting to the visual workspace", actions: "Cancel" },
+  connecting: { copy: "Connecting to Reactor X2", actions: "Cancel" },
   waiting_frames: { copy: "Preparing your preview", actions: "Stop preview" },
   live: { copy: "Live preview", actions: "Refine, Record next take, Stop" },
   updating: {
@@ -214,7 +214,7 @@ export const ERROR_COPY: Record<ErrorCode, string> = {
   SOURCE_INVALID: "That file could not be used as a product photo.",
   PROVIDER_BLOCKED: "The provider declined this request. Try rephrasing.",
   PLAN_CONFLICT: "The plan changed. Refresh and try again.",
-  REACTOR_UNAVAILABLE: "The visual workspace is unavailable right now.",
+  REACTOR_UNAVAILABLE: "Reactor X2 is unavailable right now.",
   RECORDING_UNSUPPORTED: "This browser cannot record the preview.",
   EXPORT_FAILED: "The MP4 could not be prepared. Retry export.",
   SESSION_EXPIRED: "Your session expired. Enter the access code again.",

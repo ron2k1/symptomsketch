@@ -7,6 +7,11 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
+ * Type system (each face has one job):
+ *   font-sans    Inter: UI chrome and body copy.
+ *   font-reactor JetBrains Mono: everything that names or shows off the Reactor X2 engine
+ *                (ReactorMark, the live stage badge, live stats readouts). Contract class name.
+ *
  * SymptomSketch theme, from the workspace concept mockups: warm white paper, white cards, forest
  * green actions, a sand frame around the stage. Every color in the app comes from these tokens.
  * The `neon` / `magenta` names are kept from the first palette so components stay unchanged:
@@ -50,12 +55,25 @@
   --grid-line: transparent;
   --glow: 0 1px 2px rgb(28 32 30 / 0.05), 0 8px 24px rgb(28 32 30 / 0.06);
   --glow-magenta: 0 0 0 1px rgb(194 85 62 / 0.3), 0 6px 18px rgb(194 85 62 / 0.12);
+
+  /* Reactor X2 brand treatment: a near-black ink chip with sand type and a mint signal dot. */
+  --reactor-ink: #14201b;
+  --reactor-ink-foreground: #f2e3c4;
+  --reactor-signal: #7fd4a8;
+  --reactor-line: rgb(127 212 168 / 0.45);
+  --reactor-soft: rgb(20 32 27 / 0.06);
+  --reactor-glow: 0 0 0 1px rgb(127 212 168 / 0.25), 0 6px 18px rgb(20 32 27 / 0.22);
+
+  /* Type face (mapped to font-reactor in @theme below). */
+  --reactor-face: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 }
 
 @theme inline {
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
-  /* The concept uses one sans face throughout; `font-mono` call sites render in it too. */
+  /* The concept uses one sans face for chrome; `font-mono` call sites render in it too. */
   --font-mono: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  /* Reactor X2 face (ReactorMark, stage badge, live stats). Builder contract: `font-reactor`. */
+  --font-reactor: var(--reactor-face);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -92,6 +110,11 @@
   --color-sand: var(--sand);
   --color-sand-deep: var(--sand-deep);
   --color-sand-soft: var(--sand-soft);
+  --color-reactor-ink: var(--reactor-ink);
+  --color-reactor-ink-foreground: var(--reactor-ink-foreground);
+  --color-reactor-signal: var(--reactor-signal);
+  --color-reactor-line: var(--reactor-line);
+  --color-reactor-soft: var(--reactor-soft);
 }
 
 @layer base {

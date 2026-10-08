@@ -9,6 +9,7 @@ import {
   type CaseTab,
 } from "@symptomsketch/contracts";
 import { BrandLogo } from "@/components/BrandLogo";
+import { ReactorMark } from "@/components/ReactorMark";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "./WorkspaceProvider";
 
@@ -60,6 +61,10 @@ export function WorkspaceHeader() {
         >
           <BrandLogo compact />
         </Link>
+        <span className="hidden items-center gap-1.5 text-[12.5px] text-muted-foreground lg:flex">
+          built on
+          <ReactorMark size="sm" variant="soft" />
+        </span>
 
         {caseData ? (
           <div

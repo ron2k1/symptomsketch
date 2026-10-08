@@ -11,6 +11,7 @@ import {
   type ReviewDecision,
   type Take,
 } from "@symptomsketch/contracts";
+import { ReactorMark } from "@/components/ReactorMark";
 import { Button } from "@/components/ui/button";
 import { formatTakeNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -176,6 +177,7 @@ export function RecreateTab() {
             <h2 id="stage-heading" className="text-xl font-semibold">
               Recreate the movement
             </h2>
+            <ReactorMark size="sm" live={live} label="Reactor X2 world model" />
             <span
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-mono text-[12px]",
