@@ -202,17 +202,20 @@
   }
 
   /* Highlight marks: established detail (mint) vs newest correction (coral). */
+  /* Negative margin cancels the padding, so "once." keeps its full stop next to the word. */
   mark.hl-established {
     background: rgb(46 94 78 / 0.13);
     color: var(--foreground);
     border-radius: 4px;
-    padding: 0 3px;
+    padding: 0 2px;
+    margin: 0 -2px;
   }
   mark.hl-correction {
     background: rgb(194 85 62 / 0.18);
     color: var(--foreground);
     border-radius: 4px;
-    padding: 0 3px;
+    padding: 0 2px;
+    margin: 0 -2px;
   }
 
   /* Hand-drawn sand underline behind a highlighted headline word. */

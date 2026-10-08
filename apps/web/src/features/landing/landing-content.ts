@@ -36,7 +36,8 @@ export const EXAMPLE_WORKSPACE = {
   productName: "Robot vacuum",
   sourceCaption: "starts from your photo",
   whatHappened: { before: "It jerks ", marks: ["backward", "once"], after: "." },
-  clipDuration: "0:06",
+  /** The clip card shows the demo photo, not X2 output, so it is labelled as an illustration. */
+  clipTag: "Illustration",
 } as const;
 
 export const UPLOAD_PRODUCT_ID = "upload-photo";

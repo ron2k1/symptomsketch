@@ -10,7 +10,7 @@ import { EXAMPLE_WORKSPACE } from "./landing-content";
  * The frame shows the real demo photo Reactor X2 starts from; no provider session starts here.
  */
 export function ExampleWorkspace() {
-  const { image, productName, sourceCaption, whatHappened, clipDuration } = EXAMPLE_WORKSPACE;
+  const { image, productName, sourceCaption, whatHappened, clipTag } = EXAMPLE_WORKSPACE;
   return (
     <figure className="relative mx-auto w-full max-w-4xl md:px-10 md:pb-10">
       <div className="holo-tray p-3 sm:p-6">
@@ -68,7 +68,7 @@ export function ExampleWorkspace() {
               <Play aria-hidden className="size-3.5 fill-foreground text-foreground" />
             </span>
             <span className="absolute right-2 bottom-2 rounded-md bg-foreground/70 px-1.5 py-0.5 text-[11px] font-medium text-background">
-              {clipDuration}
+              {clipTag}
             </span>
           </span>
         </FloatCard>
