@@ -124,13 +124,50 @@ describe("PreviewController (spec 8 live preview)", () => {
       expect.objectContaining({ planRevisionId: "plan_1" }),
     );
     const preview = h.instances[0]!;
-    expect(preview.connect).toHaveBeenCalledWith("test-jwt-not-real", expect.anything());
+    // No selectedAction on this plan: null -> static still (no motion sketch).
+    expect(preview.connect).toHaveBeenCalledWith("test-jwt-not-real", expect.anything(), null);
     expect(preview.prepareRun).toHaveBeenCalledTimes(1);
     expect(preview.fire).toHaveBeenCalledWith("server compiled prompt one");
     expect(c.current).toMatchObject({ status: "waiting_frames", activePlanId: "plan_1" });
 
     preview.frame(0.04, true);
     expect(c.current.status).toBe("live");
+  });
+
+  it("hands plan.selectedAction to connect and to every correction (motion sketch)", async () => {
+    const action = (direction: string) => ({
+      subject: "robot vacuum",
+      startingState: "still",
+      action: "moves",
+      direction,
+      repetitions: 1,
+      timing: null,
+      magnitude: null,
+      endingState: "stopped",
+    });
+    const withAction = (id: string, prompt: string, direction: string) =>
+      ({ ...plan(id, prompt), plan: { selectedAction: action(direction) } }) as PlanRevision;
+    const c = new PreviewController(() => undefined);
+    c.setProps({
+      caseId: "case_1",
+      plan: withAction("plan_1", "prompt one", "backward"),
+      referenceImageUrl: "/ref",
+    });
+    await c.start(video);
+    const preview = h.instances[0]!;
+    expect(preview.connect).toHaveBeenCalledWith(
+      "test-jwt-not-real",
+      expect.anything(),
+      action("backward"),
+    );
+    preview.frame(1, true);
+    c.setProps({
+      caseId: "case_1",
+      plan: withAction("plan_2", "prompt two", "left"),
+      referenceImageUrl: "/ref",
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(preview.correct).toHaveBeenCalledWith("prompt two", action("left"));
   });
 
   it("serializes prompt updates: newest wins, live again only after a fresh frame", async () => {

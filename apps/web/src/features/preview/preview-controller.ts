@@ -3,6 +3,7 @@ import {
   type PlanRevision,
   type PreviewStatus,
   type ReactorTokenResponse,
+  type SelectedAction,
 } from "@symptomsketch/contracts";
 import { createReactorToken } from "@/lib/api";
 import { newClientRequestId } from "@/lib/ids";
@@ -82,6 +83,12 @@ const CORRECTION_DECLINED =
   "The visual workspace did not accept that update. The preview keeps the previous movement.";
 const MODERATION_WARNING = "The provider flagged part of this request. Consider rephrasing it.";
 
+/** The structured action that selects the motion sketch (null when the plan carries none). */
+function actionOf(plan: PlanRevision): SelectedAction | null {
+  const inner = (plan as { plan?: { selectedAction?: SelectedAction } }).plan;
+  return inner?.selectedAction ?? null;
+}
+
 function isReadyPlan(plan: PlanRevision | null): plan is PlanRevision & { reactorPrompt: string } {
   return plan !== null && plan.status === "ready" && typeof plan.reactorPrompt === "string";
 }
@@ -98,7 +105,11 @@ export class PreviewController {
   private session: LiveSession | null = null;
   private seq = 0;
   private reference: { url: string; blob: Blob; still: ImageBitmap } | null = null;
-  private pendingPrompt: { planId: string; prompt: string } | null = null;
+  private pendingPrompt: {
+    planId: string;
+    prompt: string;
+    action: SelectedAction | null;
+  } | null = null;
   private queuedPlanId: string | null = null;
   private pumping = false;
   private frameWaiter: { threshold: number; resolve: () => void } | null = null;
@@ -127,7 +138,11 @@ export class PreviewController {
     }
     if (isReadyPlan(next.plan) && next.plan.id !== this.queuedPlanId) {
       this.queuedPlanId = next.plan.id;
-      this.pendingPrompt = { planId: next.plan.id, prompt: next.plan.reactorPrompt };
+      this.pendingPrompt = {
+        planId: next.plan.id,
+        prompt: next.plan.reactorPrompt,
+        action: actionOf(next.plan),
+      };
       s.lastActivityAt = performance.now();
       if (s.fired) void this.pump(s);
     }
@@ -191,7 +206,7 @@ export class PreviewController {
     this.wire(s);
 
     try {
-      await s.preview.connect(token.jwt, ref.still);
+      await s.preview.connect(token.jwt, ref.still, actionOf(plan));
       if (this.session !== s) return;
       s.connected = true;
       this.update({ status: "waiting_frames" });
@@ -346,7 +361,7 @@ export class PreviewController {
         const next = this.pendingPrompt;
         this.pendingPrompt = null;
         this.update({ status: "updating" });
-        const ok = await s.preview.correct(next.prompt);
+        const ok = await s.preview.correct(next.prompt, next.action);
         if (this.session !== s || s.busy) return;
         if (!ok) {
           this.update({ notice: CORRECTION_DECLINED });

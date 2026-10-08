@@ -1,6 +1,20 @@
 import { X2Model, type FileRef, type X2StateUpdateMessage } from "@reactor-models/x2/core";
-import type { StillImage } from "./geometry";
+import type { SelectedAction } from "@symptomsketch/contracts";
+import { STAGE_HEIGHT, STAGE_WIDTH, type StillImage } from "./geometry";
+import {
+  buildMotionProgram,
+  pointerSchedule,
+  type MotionProgram,
+  type ProductRegion,
+} from "./motion-sketch";
+import { detectProductRegion } from "./product-region";
 import { createStillSource, type StillSource } from "./source-canvas";
+
+/** Output frames this soon after setPrompt are left over from the previous run (motion lab). */
+const STALE_AFTER_PROMPT_MS = 250;
+/** After reset(), wait until no new output frame arrives for this long (capped) before the next run. */
+const RESET_QUIET_MS = 700;
+const RESET_QUIET_MAX_MS = 2500;
 
 /** js-sdk types are not importable from apps/web (docs/providers/reactor-x2.md section 3). */
 export type ReactorStatus = ReturnType<X2Model["getStatus"]>;
@@ -85,6 +99,13 @@ export class X2Preview {
   private sawFresh = false;
   private frameHandle: number | null = null;
   private closed = false;
+  private region: ProductRegion | null = null;
+  private motion: MotionProgram | null = null;
+  private keepBacklog: boolean | null = null;
+  private firedAt = Number.NEGATIVE_INFINITY;
+  private lastFreshAt = 0;
+  private pointerTimers: number[] = [];
+  private pointerSent = false;
 
   constructor(video: HTMLVideoElement) {
     this.video = video;
@@ -144,8 +165,20 @@ export class X2Preview {
     return this.x2.getStatus();
   }
 
-  /** jwt: the static string from POST /api/cases/:id/reactor-token. Resolves once the source is live. */
-  async connect(jwt: string, still: StillImage): Promise<void> {
+  /** Motion program the next run plays (null = static still). */
+  get motionProgram(): MotionProgram | null {
+    return this.motion;
+  }
+
+  /**
+   * jwt: the static string from POST /api/cases/:id/reactor-token. Resolves once the source is live.
+   * `action` (plan.selectedAction) selects the motion sketch when the product region is known.
+   */
+  async connect(
+    jwt: string,
+    still: StillImage,
+    action: SelectedAction | null = null,
+  ): Promise<void> {
     try {
       await this.x2.connect(jwt);
     } catch (err) {
@@ -153,14 +186,27 @@ export class X2Preview {
     }
     if (this.closed) throw new PreviewFailure("ABORTED", "connect");
     if (this.x2.getStatus() !== "ready") throw new PreviewFailure("INVALID_STATE", "connect");
-    this.source = createStillSource(still);
+    this.region = detectProductRegion(still);
+    this.motion = buildMotionProgram(action, this.region);
+    this.source = createStillSource(still, this.region);
     try {
       await this.x2.publishSource(this.source.track);
     } catch (err) {
       throw new PreviewFailure(codeOf(err, "PUBLISH_FAILED"), "publish");
     }
-    // Still mode: consume every source frame in order; persists across reset (doc section 9).
-    await this.x2.setKeepBacklog({ keep_backlog: true });
+    await this.syncBacklog();
+  }
+
+  /**
+   * Static still: keep_backlog true (consume every frame in order). Animated sketch: false, because
+   * true delays the sketched motion by about 5 s and carries it into the next run (doc section 9).
+   * Persists across reset, so it is only sent when it changes.
+   */
+  private async syncBacklog(): Promise<void> {
+    const want = this.motion === null;
+    if (this.keepBacklog === want) return;
+    await this.x2.setKeepBacklog({ keep_backlog: want });
+    this.keepBacklog = want;
   }
 
   /** Upload (once per connection) and apply the canonical reference. Generation needs fire() next. */
@@ -184,28 +230,83 @@ export class X2Preview {
 
   /** Sends the action prompt for a new run. Arming happens on generation_started. Returns the run id. */
   async fire(prompt: string): Promise<number> {
+    await this.syncBacklog();
     this.runId += 1;
     const id = this.runId;
+    this.firedAt = performance.now();
     const ack = await this.x2.setPrompt({ prompt });
     if (!ack) throw new PreviewFailure(this.lastErrorCode("invalid_command"), "prompt");
     return id;
   }
 
-  /** Mid-run correction; applies from the next block, no restart. Callers serialize these. */
-  async correct(prompt: string): Promise<boolean> {
-    return (await this.x2.setPrompt({ prompt })) !== undefined;
+  /**
+   * Mid-run correction; applies from the next block, no restart. Callers serialize these.
+   * With a new `action`, the motion sketch replays from the still pose so the change is visible.
+   */
+  async correct(prompt: string, action?: SelectedAction | null): Promise<boolean> {
+    const ok = (await this.x2.setPrompt({ prompt })) !== undefined;
+    if (ok && action !== undefined && !this.closed) {
+      this.stopMotion();
+      this.motion = buildMotionProgram(action, this.region);
+      await this.syncBacklog();
+      if (this.sawFresh) this.startMotion(performance.now());
+    }
+    return ok;
   }
 
   /** Stops generation and keeps the connection + token. Output freezes until the next fire(). */
   async reset(): Promise<void> {
     this.armedRun = 0;
     this.sawFresh = false;
+    this.stopMotion();
     await this.x2.reset();
+    // Frames of the previous run can still arrive after reset; let them drain (motion lab).
+    const started = performance.now();
+    this.lastFreshAt = started;
+    while (!this.closed) {
+      const now = performance.now();
+      if (now - this.lastFreshAt >= RESET_QUIET_MS || now - started >= RESET_QUIET_MAX_MS) break;
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+    }
+  }
+
+  /** Plays the motion program from t0 on the source canvas and drags the pointer along its path. */
+  private startMotion(t0: number): void {
+    const program = this.motion;
+    const source = this.source;
+    if (!program || !source || !this.region) return;
+    source.play(program, t0);
+    const { fore } = source;
+    const center = {
+      x: (fore.x + this.region.center.x * fore.w) / STAGE_WIDTH,
+      y: (fore.y + this.region.center.y * fore.h) / STAGE_HEIGHT,
+    };
+    const boxH = (this.region.box.h * fore.h) / STAGE_HEIGHT;
+    for (const sample of pointerSchedule(program, center, boxH)) {
+      const delay = Math.max(0, t0 + sample.atMs - performance.now());
+      const timer = window.setTimeout(() => {
+        if (this.closed) return;
+        this.pointerSent = sample.active;
+        void this.x2.setPointer({ x: sample.x, y: sample.y, active: sample.active });
+      }, delay);
+      this.pointerTimers.push(timer);
+    }
+  }
+
+  /** Back to the still pose; cancels pending pointer sends and releases an active pointer. */
+  private stopMotion(): void {
+    for (const t of this.pointerTimers.splice(0)) window.clearTimeout(t);
+    this.source?.rest();
+    if (this.pointerSent && !this.closed) {
+      this.pointerSent = false;
+      void this.x2.setPointer({ x: 0.5, y: 0.5, active: false });
+    }
   }
 
   /** Full teardown in the documented order. The session ends server-side. Idempotent. */
   async close(): Promise<void> {
     if (this.closed) return;
+    for (const t of this.pointerTimers.splice(0)) window.clearTimeout(t);
     this.closed = true;
     if (this.frameHandle !== null) this.video.cancelVideoFrameCallback(this.frameHandle);
     this.frameHandle = null;
@@ -264,15 +365,23 @@ export class X2Preview {
     const onFrame: VideoFrameRequestCallback = (_now, meta) => {
       if (this.closed) return;
       if (meta.mediaTime > this.lastMediaTimeValue) {
+        const at = performance.now();
         this.lastMediaTimeValue = meta.mediaTime;
-        const inRun = this.armedRun !== 0 && meta.mediaTime > this.mediaTimeAtArm;
+        this.lastFreshAt = at;
+        const inRun =
+          this.armedRun !== 0 &&
+          meta.mediaTime > this.mediaTimeAtArm &&
+          at - this.firedAt >= STALE_AFTER_PROMPT_MS;
         const firstOfRun = inRun && !this.sawFresh;
-        if (firstOfRun) this.sawFresh = true;
+        if (firstOfRun) {
+          this.sawFresh = true;
+          this.startMotion(at); // the run's first real output frame is the sketch's t0
+        }
         this.emit("frame", {
           runId: inRun ? this.armedRun : 0,
           firstOfRun,
           mediaTime: meta.mediaTime,
-          at: performance.now(),
+          at,
         });
       }
       this.frameHandle = this.video.requestVideoFrameCallback(onFrame);

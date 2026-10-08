@@ -402,20 +402,88 @@ release`). Call it on Stop preview, idle (`LIMITS.previewIdleMs`), max (`LIMITS.
 - **JWT handling.** Pass the **static JWT string**, never a resolver that mints. The SDK calls a resolver
   before every authenticated request, and a freshly minted token there broke uploads with 403.
 
-## 9. keep_backlog and pointer
+## 9. keep_backlog, pointer and the motion sketch
 
-- **`setKeepBacklog({keep_backlog:true})`.** The default is false, which drops backlog for low
-  latency. True consumes every source frame in order: smoother motion at the cost of growing delay.
-  For a static repainted still there is no motion to lag, and it is the documented still and drag
-  mode. It worked live and persists across reset.
-- **`setPointer({x, y, active})`.** `x` and `y` are 0..1, normalized to the output frame. It is sampled
-  once per block and only steers while `active`. It replies `pointer_changed {x,y,active}`, which was
-  verified live.
-  - Send `active:false` on release; `reset()` also clears the pointer.
+- **`setKeepBacklog({keep_backlog})`.** The default is false, which drops backlog for low latency.
+  True consumes every source frame in order, which gives smoother motion but a growing delay. It
+  persists across reset. The app sends true for a static still and false while the source is
+  animated (see the motion sketch below). It only sends the command when the value changes.
+- **`setPointer({x, y, active})`.** `x` and `y` are 0..1, normalized to the output frame. The model
+  samples it once per block, and it only steers while `active` is true. It replies
+  `pointer_changed {x,y,active}`, which was verified live.
+  - Send `active:false` on release. `reset()` also clears the pointer.
   - Split setters exist: `setPointerX({pointer_x})`, `setPointerY({pointer_y})` and
     `setPointerActive({pointer_active})`.
-  - Use it only if a directional drag expresses the motion better than the prompt.
-  - Its visual effect on motion was not evaluated.
+
+### Motion sketch (measured 2026-10-08, implemented in `apps/web/src/features/preview`)
+
+From a still photo, X2 does not move the product because the prompt asks it to. A throwaway lab
+harness ran 22 runs over 3 real X2 sessions on the robot-vacuum demo photo. It tracked the
+vacuum's horizontal position every 0.5 s (centroid of its dark pixels, as a fraction of frame
+width), and the asked move was +0.08 of frame width.
+
+- The compiler prompt alone, with a static source, gave no sideways movement. The vacuum rotated
+  or changed shape in place, and x stayed within 0.03 of the start (0.555 to 0.566). This is the
+  likely reason the critic returned needs_revision for problem takes.
+- Motion-first wording alone, with a static source, was a little livelier and kept the shape
+  slightly better, but it still did not produce the move (0.556 to 0.538).
+- The pointer alone did nothing (x flat at 0.553 to 0.564).
+- Animating the source alone moved the vacuum, but in 2 of 3 runs it jittered, slid back near the
+  end, or rotated and changed shape.
+- Translating the whole still made the entire room slide like a camera pan, with a dark bar at the
+  edge. The background diff was 33, against 3 to 4 for the other variants. Do not do this.
+- With `keep_backlog:true`, the sketched motion arrived about 5 s late (only at 7.9 s), and source
+  motion carried over into the next run.
+- **Winner: sketch plus pointer.** The source is animated and the pointer is dragged along the same
+  path, with `keep_backlog:false` and the motion-first prompt. In 4 of 4 runs the vacuum moved from
+  x 0.553 to about 0.625 (+0.072 against +0.08 asked) and stayed there. It kept the reference look,
+  and the sofa, table and rug stayed still (background diff 3.2 to 3.7). At 12% amplitude it moved
+  +0.113 and held, with a small change on the top button and bumper. The output trails the source
+  by about 1 to 3 s and tends to arrive as a soft creep followed by a step, not a smooth glide.
+
+How the app does it:
+
+- `motion-sketch.ts` maps `plan.selectedAction` to a motion program. Direction is read relative to
+  the product's facing, so on the demo backward means screen-right and slightly away, because the
+  side brush and bumper are at the front-left. Moving away shrinks the product (end scale 0.97 at
+  8%) and moving closer grows it. Magnitude maps to 0.06..0.12 of frame width (default 0.08,
+  "half" or "noticeable" 0.12). Timing maps to 1.5..2.5 s (default 2 s, quick words 1.5 s).
+  Repetitions split the path into equal steps with a 300 ms hold between them, capped at 3, and the
+  total move is capped at 0.12. Rotations, lights, parts opening and unmapped directions get no
+  program, so the source stays a static still, the same behaviour as before. So do negated travel
+  ("does not move", "stops moving", "without reversing" never overrides an explicit "forward") and
+  a missing direction: when the direction field is null, the action text needs its own whole-word,
+  non-negated travel verb and direction word. The product's facing is never guessed.
+- `prompt-compiler.ts` (server) writes the motion-first lead ("The {subject} {action}, exactly once:
+  a clearly visible movement ..., then it stops.") only for a problem action that starts with a
+  3rd-person verb, states a direction or size and is not negated; "then it stops" only when the
+  ending state is a stop. Lights, sounds, "does not move", hovering and every solution step (often
+  done by a person) get a neutral "Product: the {subject}. Action: ..." line.
+- `product-region.ts` gives the product mask, centre, a clean-plate patch of empty floor and the
+  facing direction. It only does this for stills with a measured region. Today that is the
+  robot-vacuum demo photo, matched by aspect ratio plus a 12x8 luma fingerprint, which also
+  matches the server's re-encoded 1280x854 reference. Uploaded photos and the fan and drone demos
+  stay static. Taking a product box from the planner or a one-time Gemini call is the next step.
+- `source-canvas.ts` repaints at 24 fps on the same canvas and track. Each repaint draws the
+  letterboxed still, covers the product mask (grown 5%) with the tiled clean plate, then draws the
+  product cutout translated and scaled about its centre with ease-in-out.
+- `x2-preview.ts` starts the program at the run's first real output frame (t0), holds the still for
+  500 ms, moves, then holds the end pose. The pointer starts at the product centre, raised by 4% of
+  the box height. It gets 20 eased `setPointer` sends per step and `active:false` at the end point
+  150 ms after the last move. `reset()` puts the source back to the still, cancels pending pointer
+  sends and releases the pointer. It then waits until no new output frame has arrived for 700 ms
+  (2.5 s at most), because frames of the previous run can arrive after reset. Frames that arrive
+  less than 250 ms after `setPrompt` are not counted as the run's first frame. A correction with a
+  new action replays the program from the still pose. Live preview and Record next take share this
+  path, because both go through `fire()`.
+
+Live check in the app (2026-10-08, robot vacuum, real Gemini plan "jerks backward, exactly once",
+magnitude null, so 0.08 over 1.5 s): live preview x 0.555 to 0.630 at about 2.5 s after the first
+frame, held through 12 s. Two recorded takes (1280x720, 8.2 s) both show the move, which is easy
+to see in frames at 0.5 s and 7.5 s. The real critic returned needs_revision ("remains
+stationary") on the first take and uncertain on the second (direction and count supported, timing
+"after stopping" not observable). A small dark sliver of the side brush can stay on the rug behind
+the moved vacuum.
 
 ## 10. Observed timings (headless Chromium, home network)
 

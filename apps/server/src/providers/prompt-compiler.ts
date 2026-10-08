@@ -1,8 +1,11 @@
 // Deterministic ActionPlan -> Reactor X2 prompt + caption (spec 9 "Reasoning planner contract").
-// Observable action only: subject + visible features, starting state, the one selected action with
-// its direction/count/timing/magnitude, ending state, steady camera, same product, photoreal.
-// Never chat history, actions tried, understanding text, or causes.
-import { LIMITS, type ActionPlan, type Purpose } from "@symptomsketch/contracts";
+// Observable action only: the moving subject + the one selected action with its direction/count/
+// magnitude/timing FIRST, then starting/ending state, identity (same product, visible features),
+// steady camera, photoreal. Never chat history, actions tried, understanding text, or causes.
+// Motion-first layout: the motion lab (docs/providers/reactor-x2.md section 9) used it for every
+// sketch run; the older identity-first, stasis-first layout ("Start: ... sits still", "no other
+// movement") did not stop shape changes and left the product in place.
+import { LIMITS, type ActionPlan } from "@symptomsketch/contracts";
 
 /** Product facts the compiler may use (from the owned product revision, never the model). */
 export interface PromptProduct {
@@ -74,30 +77,84 @@ function featurePhrase(product: PromptProduct, subject: string): string {
   return capWords([...new Set(features)].join(", "), FIELD_CAP.features);
 }
 
-/** The single action line: action + direction + count + magnitude + timing, each once. */
-function actionLine(plan: ActionPlan): string {
+function lowerFirst(s: string): string {
+  return s ? `${s[0]!.toLowerCase()}${s.slice(1)}` : s;
+}
+
+function upperFirst(s: string): string {
+  return s ? `${s[0]!.toUpperCase()}${s.slice(1)}` : s;
+}
+
+/** "does not move", "stops moving", "without drifting", "won't budge": the product holds still. */
+const NEGATED_MOTION =
+  /\b(?:not|never|without|cannot|no longer|fails? to|failed to|stops?|stopped|\w+n['’]t)\s+(?:mov|driv|roll|travel|go(?:es|ing)?\b|budg|drift|bob|shift|slid|creep|turn|spin|rotat|swing|tilt)/i;
+/** Ending states that are a stop, so "then it stops" does not contradict them. */
+const STOP_STATE =
+  /\b(?:stops?|stopped|stationary|motionless|halts?|halted|at rest|comes? to (?:a )?(?:stop|rest))\b|\bstill\b(?!\s+\w+ing\b)/i;
+const NOT_A_VERB = new Set(["its", "lens"]);
+
+/** "jerks backward", "does not move": starts with a 3rd-person verb, so the product is the actor. */
+function productIsActor(action: string): boolean {
+  const first = /^[a-z]+/i.exec(action)?.[0]?.toLowerCase() ?? "";
+  if (["is", "has", "was", "does", "goes"].includes(first)) return true;
+  return (
+    first.length > 2 && /s$/.test(first) && !/(ss|us|is)$/.test(first) && !NOT_A_VERB.has(first)
+  );
+}
+
+interface Lead {
+  text: string;
+  /** The lead asks for a whole-product movement ("a clearly visible movement"). */
+  moves: boolean;
+}
+
+/**
+ * The lead sentence. A problem action that starts with a 3rd-person verb makes the product the
+ * actor ("The robot vacuum jerks backward, exactly once"). Only when it also states a direction or
+ * size and is not negated does it add the one clearly visible movement with its size and timing
+ * (": a clearly visible movement of about a quarter of its body length, over about 2 seconds"),
+ * plus "then it stops" when the ending state is a stop. Lights, sounds, "does not move", hovering,
+ * and solution steps (often done by a person: "Press the start button once") stay neutral:
+ * "Product: the robot vacuum. Action: Press the start button once, exactly once."
+ */
+function actionLead(plan: ActionPlan, subject: string): Lead {
   const a = plan.selectedAction;
   const action = cleanField(a.action, FIELD_CAP.action);
-  const lowerAction = action.toLowerCase();
-  const parts: string[] = [action];
+  const actor = plan.purpose === "problem" && productIsActor(action);
+  const parts: string[] = [
+    actor ? `The ${subject} ${lowerFirst(action)}` : `Action: ${upperFirst(action)}`,
+  ];
   const direction = cleanField(a.direction, FIELD_CAP.short);
-  if (direction && !lowerAction.includes(direction.toLowerCase())) {
+  if (direction && !action.toLowerCase().includes(direction.toLowerCase())) {
     parts.push(`direction: ${direction}`);
   }
   if (a.repetitions !== null) parts.push(countPhrase(a.repetitions));
   const magnitude = cleanField(a.magnitude, FIELD_CAP.short);
-  if (magnitude) parts.push(`size of the movement: ${magnitude}`);
   const timing = cleanField(a.timing, FIELD_CAP.timing);
-  if (timing) parts.push(`timing: ${timing}`);
-  return parts.join(", ");
+  const moves = actor && Boolean(direction || magnitude) && !NEGATED_MOTION.test(action);
+  if (!moves) {
+    if (magnitude) parts.push(`size: ${magnitude}`);
+    if (timing) parts.push(`timing: ${timing}`);
+    const line = `${parts.join(", ")}.`;
+    return { text: actor ? line : `Product: the ${subject}. ${line}`, moves };
+  }
+  const movement = !magnitude
+    ? "a clearly visible movement"
+    : magnitude.includes(" ")
+      ? `a clearly visible movement of ${magnitude}`
+      : `a clearly visible ${magnitude} movement`;
+  const stops = STOP_STATE.test(cleanField(a.endingState, FIELD_CAP.state))
+    ? ", then it stops"
+    : "";
+  return { text: `${parts.join(", ")}: ${movement}${timing ? `, ${timing}` : ""}${stops}.`, moves };
 }
 
-function framingLine(purpose: Purpose): string {
-  const extra =
-    purpose === "problem"
-      ? "Show only this one action, with no other movement."
-      : "Show only this one step, with no other movement.";
-  return `${extra} Steady fixed camera, same framing and lighting throughout. Photorealistic, no text or overlays.`;
+const FRAMING =
+  "Steady fixed camera; the surroundings stay in place. Photorealistic, no text or overlays.";
+
+/** Drops a leading article so "The {subject}" never reads "The the vacuum". */
+function bareSubject(subject: string): string {
+  return subject.replace(/^(the|a|an)\s+/i, "");
 }
 
 /**
@@ -106,7 +163,7 @@ function framingLine(purpose: Purpose): string {
  */
 export function compileReactorPrompt(plan: ActionPlan, product: PromptProduct): string {
   const a = plan.selectedAction;
-  const subject = cleanField(a.subject, FIELD_CAP.subject) || "product";
+  const subject = bareSubject(cleanField(a.subject, FIELD_CAP.subject)) || "product";
   const features = featurePhrase(product, subject);
   const start = cleanField(a.startingState, FIELD_CAP.state);
   const end = cleanField(a.endingState, FIELD_CAP.state);
@@ -121,19 +178,26 @@ export function compileReactorPrompt(plan: ActionPlan, product: PromptProduct): 
         )
       : "";
 
-  const identity = `The same ${subject} shown in the reference image${
-    features ? `, with ${features}` : ""
-  }; keep its shape, colors and details identical to the reference.`;
-  const identityPlain = `The same ${subject} shown in the reference image; keep its shape, colors and details identical to the reference.`;
+  const lead = actionLead(plan, subject);
+  const only =
+    plan.purpose === "solution"
+      ? "Only this one step happens"
+      : lead.moves
+        ? "It is the only thing that moves"
+        : "Only this action happens";
+  const identity = (withFeatures: boolean) =>
+    `${only}; it stays identical to the reference image${
+      withFeatures && features ? `, with ${features}` : ""
+    }.`;
 
   const build = (withFeatures: boolean, withSetup: boolean): string =>
     [
-      withFeatures ? identity : identityPlain,
+      lead.text,
+      start ? `Starting state: ${sentence(start)}` : "",
+      end ? `Ending state: ${sentence(end)}` : "",
       withSetup && setup ? `Setup: ${setup}.` : "",
-      start ? `Start: ${sentence(start)}` : "",
-      `Action: ${sentence(actionLine(plan))}`,
-      end ? `End: ${sentence(end)}` : "",
-      framingLine(plan.purpose),
+      identity(withFeatures),
+      FRAMING,
     ]
       .filter(Boolean)
       .join(" ");
