@@ -21,6 +21,7 @@ export const ID_PREFIX = {
   ticketReply: "rpl",
   job: "job",
   lease: "lse",
+  supportCallTranscript: "sct",
 } as const;
 export type IdPrefix = (typeof ID_PREFIX)[keyof typeof ID_PREFIX];
 

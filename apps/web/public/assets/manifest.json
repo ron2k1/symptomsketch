@@ -19,5 +19,15 @@
     "height": 1200,
     "alt": "A white quadcopter camera drone with landing legs and an underslung gimbal camera hovering just above a lake at dusk.",
     "role": "product"
+  },
+  {
+    "src": "/assets/support-agent.jpg",
+    "width": 860,
+    "height": 1152,
+    "alt": "A fictional AI support agent with shoulder-length dark wavy hair in a plain forest-green T-shirt, facing the camera against a warm grey studio background.",
+    "role": "support-agent",
+    "provenance": "AI-generated with Gemini Nano Banana; fictional person",
+    "model": "gemini-nano-banana-2.1",
+    "generatedBy": "scripts/generate-support-agent.ts"
   }
 ]

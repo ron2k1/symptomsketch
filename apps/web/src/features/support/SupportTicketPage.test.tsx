@@ -162,4 +162,42 @@ describe("SupportTicketPage", () => {
       expect(bodiesOf(fetchMock, "POST", "/api/tickets/tkt_1/work-case")).toHaveLength(1),
     );
   });
+
+  it("shows the customer's AI support agent call transcript, labeled as AI", async () => {
+    mockApi({
+      "GET /api/session": () => ({ status: 200, body: SUPPORT }),
+      "GET /api/tickets/tkt_1": () => ({
+        status: 200,
+        body: {
+          ticket: {
+            ...TICKET,
+            workCaseIds: [],
+            aiCallTranscripts: [
+              {
+                id: "sct_1",
+                ticketId: "tkt_1",
+                lines: [
+                  { speaker: "character", text: "Hi, I'm Sam, an AI support agent." },
+                  { speaker: "user", text: "It jerks back after it stops.", typed: true },
+                ],
+                durationSeconds: 75,
+                endReason: "ended_by_client",
+                createdAt: "2026-10-08T10:30:00.000Z",
+              },
+            ],
+          },
+        },
+      }),
+    });
+    renderPage();
+    const heading = await screen.findByRole("heading", {
+      name: "AI support agent call transcript",
+    });
+    const section = heading.closest("section");
+    expect(section?.textContent).toContain("Call · 1:15");
+    expect(section?.textContent).toContain("Sam (AI)");
+    expect(section?.textContent).toContain("Customer · typed");
+    expect(section?.textContent).toContain("It jerks back after it stops.");
+    expect(section?.querySelector(".font-reactor")?.textContent).toBe("Reactor Vidu S2 Avatar");
+  });
 });

@@ -292,6 +292,34 @@ CREATE TABLE idempotency_keys (
   PRIMARY KEY (scope, session_id, key)
 );
 `,
+  /* 2: live AI support agent call, per-ticket cache (call package + saved Reactor avatar id) */ `
+CREATE TABLE ticket_support_calls (
+  ticket_id TEXT PRIMARY KEY REFERENCES tickets(id) ON DELETE CASCADE,
+  persona TEXT,
+  greeting TEXT,
+  brief_model_id TEXT,
+  avatar_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`,
+  /* 3: final transcripts of live AI support agent calls, shown to Demo Support on the ticket */ `
+CREATE TABLE support_call_transcripts (
+  id TEXT PRIMARY KEY,
+  ticket_id TEXT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  lines_json TEXT NOT NULL,
+  duration_seconds INTEGER NOT NULL,
+  end_reason TEXT,
+  idempotency_key TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (ticket_id, session_id, idempotency_key)
+);
+CREATE INDEX idx_support_call_transcripts_ticket ON support_call_transcripts(ticket_id, created_at);
+`,
+  /* 4: which portrait (composite | base) the saved Reactor avatar was built from */ `
+ALTER TABLE ticket_support_calls ADD COLUMN avatar_portrait TEXT;
+`,
 ];
 
 /** Apply pending migrations inside one transaction each. Returns the resulting schema version. */

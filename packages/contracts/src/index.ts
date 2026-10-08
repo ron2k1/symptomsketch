@@ -13,5 +13,6 @@ export * from "./assessments.ts";
 export * from "./reviews.ts";
 export * from "./takes.ts";
 export * from "./tickets.ts";
+export * from "./support-call.ts";
 export * from "./cases.ts";
 export * from "./api.ts";

@@ -5,6 +5,7 @@ import { APP_PATHS, type Ticket } from "@symptomsketch/contracts";
 import { Button } from "@/components/ui/button";
 import { errorMessage, getTicket, isApiClientError } from "@/lib/api";
 import { useDocumentTitle } from "@/lib/document-title";
+import { CallTranscripts } from "./CallTranscripts";
 import { DemonstrationPanel } from "./DemonstrationPanel";
 import { isAuthError, isTerminalError } from "./model";
 import { ReplyComposer } from "./ReplyComposer";
@@ -82,6 +83,7 @@ function TicketWorkspace({ ticketId, onAuthLost }: { ticketId: string; onAuthLos
             emptyText="No replies yet. The customer sees each reply in their Support tab."
           />
         </section>
+        <CallTranscripts transcripts={ticket.aiCallTranscripts} />
         <ReplyComposer
           ticket={ticket}
           onReplied={poll.setData}

@@ -14,6 +14,8 @@ import { now } from "../db/index.ts";
 import { requireSession, requireSupport } from "../http/session.ts";
 import { param, parseBody, parseWith } from "../http/validate.ts";
 import { loadTicketForSupport, loadTicketForViewer } from "./access.ts";
+import { warmTicketPortrait } from "./call-portrait.ts";
+import { registerSupportCall } from "./call-routes.ts";
 import { listInbox } from "./dto.ts";
 import { serveTicketAttachment } from "./media.ts";
 import { createReply } from "./replies.ts";
@@ -32,6 +34,7 @@ import { createWorkCase } from "./work-case.ts";
  *   POST ROUTES.ticketWorkCase          CreateWorkCaseRequest -> CreateWorkCaseResponse (201/200)
  *   GET  ROUTES.ticketAttachmentMedia   granted attachment bytes (Range)
  *   GET  ROUTES.ticketAttachmentDownload granted attachment as download
+ *   ROUTES.ticketSupportCall*           live AI support agent call (./call-routes.ts)
  * Every read is a handful of indexed queries: clients poll these every 3 s.
  */
 export function register(router: Router, ctx: AppContext): void {
@@ -43,6 +46,8 @@ export function register(router: Router, ctx: AppContext): void {
     const session = requireSession(req);
     const body = parseBody(CreateTicketRequest, req);
     const { ticket, created } = createTicket(ctx, session, param(req, "caseId"), body);
+    // Nano Banana's agent-holding-the-product portrait is ready before the first support call.
+    if (created) warmTicketPortrait(ctx, ticket.id);
     const out: TicketResponse = { ticket };
     res.status(created ? 201 : 200).json(out);
   });
@@ -96,4 +101,6 @@ export function register(router: Router, ctx: AppContext): void {
   router.get(ROUTES.ticketAttachmentDownload, async (req, res) => {
     await serveTicketAttachment(ctx, req, res, true);
   });
+
+  registerSupportCall(router, ctx);
 }

@@ -44,7 +44,7 @@ export default defineConfig({
   },
   optimizeDeps: {
     // Dev: pre-bundling would move the SDK's relative wasm import to .vite/deps and 404 it.
-    exclude: ["@reactor-models/x2", "@reactor-team/js-sdk"],
+    exclude: ["@reactor-models/x2", "@reactor-models/vidu-s2-avatar", "@reactor-team/js-sdk"],
     // The excluded ESM imports CJS deps directly; pre-bundle them or their named exports break.
     include: [
       "react",

@@ -275,7 +275,8 @@ function requestBytes(req: GenerateStructuredRequest<unknown>): number {
   return total;
 }
 
-function raceAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+/** Shared with the Nano Banana image adapter. */
+export function raceAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   if (signal.aborted) return Promise.reject(signal.reason);
   return new Promise<T>((resolve, reject) => {
     const onAbort = () => reject(signal.reason);
@@ -295,7 +296,7 @@ function raceAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
 
 const BLOCK_HINT = /safety|block|prohibit|recitation|spii|blocklist/i;
 
-function checkInteractionStatus(interaction: InteractionLike): void {
+export function checkInteractionStatus(interaction: InteractionLike): void {
   if (interaction.status === "completed") return;
   const hints = [
     ...(interaction.errors ?? []).flatMap((e) => [e.code ?? "", e.message ?? ""]),
@@ -308,7 +309,7 @@ function checkInteractionStatus(interaction: InteractionLike): void {
   throw new GeminiError("ASSESSMENT_FAILED", "provider_error");
 }
 
-function classifyThrown(error: unknown): GeminiError {
+export function classifyThrown(error: unknown): GeminiError {
   if (error instanceof GeminiError) return error;
   const status = httpStatusOf(error);
   const name = error instanceof Error ? error.name : "";
