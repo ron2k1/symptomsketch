@@ -18,6 +18,7 @@ import {
   fetchSupportCallPortrait,
   getSupportCallBrief,
   saveSupportCallAvatar,
+  type SupportCallPortrait,
 } from "@/lib/api";
 import {
   EMPTY_TRANSCRIPT,
@@ -177,22 +178,24 @@ export class SupportCallController {
   }
 
   /** Runs alongside the brief: the per-ticket Nano Banana composite can take ~15 s. */
-  private async loadPortrait(ticketId: string, signal: AbortSignal): Promise<Blob> {
+  private async loadPortrait(ticketId: string, signal: AbortSignal): Promise<SupportCallPortrait> {
     this.set({ detail: "Preparing the agent portrait" });
-    const blob = await fetchSupportCallPortrait(paths.ticketSupportCallPortrait(ticketId), {
+    const portrait = await fetchSupportCallPortrait(paths.ticketSupportCallPortrait(ticketId), {
       signal,
     });
-    this.set({ portraitUrl: URL.createObjectURL(blob) });
-    return blob;
+    this.set({ portraitUrl: URL.createObjectURL(portrait.blob) });
+    return portrait;
   }
 
   private async bindAvatar(
     model: ViduS2AvatarModel,
     ticketId: string,
     brief: SupportCallBriefResponse,
-    portrait: Blob,
+    portrait: SupportCallPortrait,
   ): Promise<void> {
-    if (brief.avatarId) {
+    // Reuse the saved avatar only when it was built from this portrait: an avatar from the base
+    // portrait is rebuilt once Nano Banana's composite (the agent holding the product) exists.
+    if (brief.avatarId && brief.avatarPortraitSource === portrait.source) {
       this.set({ detail: "Loading the avatar" });
       await model.attachAvatar({ avatar_id: brief.avatarId });
       const ok = await this.waitFor((s) => s.phase === "avatar_ready", 30_000, "attach_avatar")
@@ -202,7 +205,7 @@ export class SupportCallController {
       if (ok) return;
     }
     this.set({ detail: "Building the avatar" });
-    const image = await model.uploadFile(portrait, { name: "support-agent.jpg" });
+    const image = await model.uploadFile(portrait.blob, { name: "support-agent.jpg" });
     this.ensureOpen();
     const started = performance.now();
     await model.createAvatar({ image, name: SUPPORT_CALL_AGENT_NAME });
@@ -215,7 +218,10 @@ export class SupportCallController {
     this.set({ avatarMs });
     console.info(`[support-call] create_avatar ready ms=${avatarMs}`);
     if (state.avatar_id) {
-      void saveSupportCallAvatar(ticketId, { avatarId: state.avatar_id }).catch(() => undefined);
+      void saveSupportCallAvatar(ticketId, {
+        avatarId: state.avatar_id,
+        portraitSource: portrait.source,
+      }).catch(() => undefined);
     }
   }
 

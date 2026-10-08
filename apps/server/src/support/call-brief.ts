@@ -72,6 +72,8 @@ export interface CallPackageRow {
   greeting: string | null;
   brief_model_id: string | null;
   avatar_id: string | null;
+  /** SupportCallPortraitSource the avatar was built from; null for rows saved before it existed. */
+  avatar_portrait: string | null;
   created_at: string;
   updated_at: string;
 }

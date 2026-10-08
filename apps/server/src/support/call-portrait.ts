@@ -11,7 +11,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
-import { LIMITS } from "@symptomsketch/contracts";
+import { LIMITS, type SupportCallPortraitSource } from "@symptomsketch/contracts";
 import type { AppContext } from "../context.ts";
 import { getRow } from "../db/index.ts";
 import { imagePart, type GeminiImageMime } from "../providers/gemini-client.ts";
@@ -89,7 +89,7 @@ export function setNanoBananaFor(ctx: AppContext, client: NanoBananaClient): voi
   clients.set(ctx, client);
 }
 
-export type PortraitSource = "composite" | "base";
+export type PortraitSource = SupportCallPortraitSource;
 
 export interface TicketPortrait {
   path: string;

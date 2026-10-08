@@ -282,6 +282,7 @@ test("brief: a package cached before the greeting cue is written again", async (
   assert.equal(briefRequests.length, before + 1);
   assert.ok(res.body.package.greeting.startsWith("Open the call by saying:"));
   assert.equal(res.body.avatarId, "av_9", "the saved avatar survives the rewrite");
+  assert.equal(res.body.avatarPortraitSource, null, "an avatar saved without a source is unknown");
 });
 
 test("brief: a provider failure is a bounded error and nothing is cached", async () => {
@@ -431,31 +432,45 @@ test("portrait: a slow composite serves base now and is cached for the next call
   }
 });
 
-test("avatar id: saved per ticket and handed back with the brief", async () => {
+test("avatar id: saved per ticket with its portrait source and handed back with the brief", async () => {
   const ticket = await submitTicket();
   const bad = await call(h.base, "PUT", paths.ticketSupportCallAvatar(ticket.id), {
     cookie: alice.cookie,
-    body: { avatarId: "" },
+    body: { avatarId: "", portraitSource: "base" },
   });
   assert.equal(bad.status, 400);
-  const stranger = await call(h.base, "PUT", paths.ticketSupportCallAvatar(ticket.id), {
-    cookie: bob.cookie,
-    body: { avatarId: "av_123" },
-  });
-  assert.equal(stranger.status, 404);
-  const saved = await call(h.base, "PUT", paths.ticketSupportCallAvatar(ticket.id), {
+  const noSource = await call(h.base, "PUT", paths.ticketSupportCallAvatar(ticket.id), {
     cookie: alice.cookie,
     body: { avatarId: "av_123" },
   });
+  assert.equal(noSource.status, 400, "the portrait source is required");
+  const stranger = await call(h.base, "PUT", paths.ticketSupportCallAvatar(ticket.id), {
+    cookie: bob.cookie,
+    body: { avatarId: "av_123", portraitSource: "base" },
+  });
+  assert.equal(stranger.status, 404);
+  const briefFor = () =>
+    call<SupportCallBriefResponse>(h.base, "POST", paths.ticketSupportCallBrief(ticket.id), {
+      cookie: alice.cookie,
+    });
+  const saved = await call(h.base, "PUT", paths.ticketSupportCallAvatar(ticket.id), {
+    cookie: alice.cookie,
+    body: { avatarId: "av_123", portraitSource: "base" },
+  });
   assert.equal(saved.status, 200);
-  const brief = await call<SupportCallBriefResponse>(
-    h.base,
-    "POST",
-    paths.ticketSupportCallBrief(ticket.id),
-    { cookie: alice.cookie },
-  );
+  const brief = await briefFor();
   assert.equal(brief.status, 200);
   assert.equal(brief.body.avatarId, "av_123");
+  assert.equal(brief.body.avatarPortraitSource, "base");
+
+  // A later call built from the composite replaces the base-portrait avatar.
+  await call(h.base, "PUT", paths.ticketSupportCallAvatar(ticket.id), {
+    cookie: alice.cookie,
+    body: { avatarId: "av_456", portraitSource: "composite" },
+  });
+  const rebuilt = await briefFor();
+  assert.equal(rebuilt.body.avatarId, "av_456");
+  assert.equal(rebuilt.body.avatarPortraitSource, "composite");
 });
 
 test("transcript: stored once per idempotency key and shown to support only", async () => {

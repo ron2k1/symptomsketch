@@ -1,0 +1,162 @@
+import type { SupportCallBriefResponse } from "@symptomsketch/contracts";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SupportCallController, type CallView } from "./support-call-controller";
+
+// The Reactor SDK needs WebRTC + wasm, so ViduS2AvatarModel is replaced by a fake that answers
+// each command with the session_state the real service sends. The API calls are mocked too.
+const sdk = vi.hoisted(() => {
+  type Handler = (message: never) => void;
+  class FakeModel {
+    static instances: FakeModel[] = [];
+    readonly handlers = new Map<string, Set<Handler>>();
+    readonly calls: string[] = [];
+    /** What end_call returns; a test that needs it to hang (as in the live runs) replaces it. */
+    endCallResult: Promise<undefined> = Promise.resolve(undefined);
+    constructor() {
+      FakeModel.instances.push(this);
+    }
+    private sub(kind: string, handler: Handler): () => void {
+      const set = this.handlers.get(kind) ?? new Set<Handler>();
+      set.add(handler);
+      this.handlers.set(kind, set);
+      return () => set.delete(handler);
+    }
+    emit(kind: string, message: unknown): void {
+      for (const handler of [...(this.handlers.get(kind) ?? [])]) handler(message as never);
+    }
+    listenerCount(): number {
+      return [...this.handlers.values()].reduce((n, set) => n + set.size, 0);
+    }
+    private session(phase: string, extra: Record<string, unknown> = {}): void {
+      setTimeout(() => this.emit("session", { phase, ...extra }), 0);
+    }
+    on(kind: string, handler: Handler): void {
+      this.sub(`on:${kind}`, handler);
+    }
+    off(kind: string, handler: Handler): void {
+      this.handlers.get(`on:${kind}`)?.delete(handler);
+    }
+    onSessionState = (h: Handler) => this.sub("session", h);
+    onCommandError = (h: Handler) => this.sub("commandError", h);
+    onTranscript = (h: Handler) => this.sub("transcript", h);
+    onCallEnded = (h: Handler) => this.sub("callEnded", h);
+    onMainVideo = (h: Handler) => this.sub("video", h);
+    onMainAudio = (h: Handler) => this.sub("audio", h);
+    async connect(): Promise<void> {
+      this.calls.push("connect");
+    }
+    getStatus(): string {
+      return "ready";
+    }
+    async getState(): Promise<{ phase: string }> {
+      return { phase: "idle" };
+    }
+    async attachAvatar({ avatar_id }: { avatar_id: string }): Promise<void> {
+      this.calls.push(`attach_avatar:${avatar_id}`);
+      this.session("avatar_ready", { avatar_id });
+    }
+    async uploadFile(): Promise<{ id: string }> {
+      this.calls.push("upload");
+      return { id: "upload_1" };
+    }
+    async createAvatar(): Promise<void> {
+      this.calls.push("create_avatar");
+      this.session("avatar_ready", { avatar_id: "av_new" });
+    }
+    async startCall(): Promise<void> {
+      this.calls.push("start_call");
+      this.session("live", { call_max_seconds: 240 });
+    }
+    async say({ text }: { text: string }): Promise<void> {
+      this.calls.push(`say:${text}`);
+    }
+    endCall(): Promise<undefined> {
+      this.calls.push("end_call");
+      return this.endCallResult;
+    }
+    async disconnect(): Promise<void> {
+      this.calls.push("disconnect");
+    }
+  }
+  return { FakeModel };
+});
+
+vi.mock("@reactor-models/vidu-s2-avatar/core", () => ({ ViduS2AvatarModel: sdk.FakeModel }));
+
+const api = vi.hoisted(() => ({
+  createSupportCallToken: vi.fn(),
+  getSupportCallBrief: vi.fn(),
+  fetchSupportCallPortrait: vi.fn(),
+  saveSupportCallAvatar: vi.fn(),
+}));
+
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
+  ...api,
+}));
+
+function brief(overrides: Partial<SupportCallBriefResponse> = {}): SupportCallBriefResponse {
+  return {
+    package: { persona: "You are Sam, an AI.", greeting: 'Open the call by saying: "Hi"' },
+    modelId: "stub",
+    avatarId: null,
+    avatarPortraitSource: null,
+    portraitUrl: "/api/tickets/tkt_1/support-call/portrait",
+    ...overrides,
+  };
+}
+
+function setup() {
+  const views: CallView[] = [];
+  const ended = vi.fn();
+  const controller = new SupportCallController((v) => views.push(v), ended);
+  const view = () => views.at(-1)!;
+  return { controller, ended, view };
+}
+
+beforeEach(() => {
+  sdk.FakeModel.instances.length = 0;
+  URL.createObjectURL = () => "blob:portrait";
+  URL.revokeObjectURL = () => undefined;
+  api.createSupportCallToken.mockResolvedValue({ jwt: "stub.jwt" });
+  api.getSupportCallBrief.mockResolvedValue(brief());
+  api.fetchSupportCallPortrait.mockResolvedValue({ blob: new Blob(["x"]), source: "composite" });
+  api.saveSupportCallAvatar.mockResolvedValue({ ok: true });
+});
+
+afterEach(() => {
+  vi.clearAllMocks();
+});
+
+describe("SupportCallController avatar reuse", () => {
+  it("rebuilds an avatar made from the base portrait once the composite exists", async () => {
+    api.getSupportCallBrief.mockResolvedValue(
+      brief({ avatarId: "av_base", avatarPortraitSource: "base" }),
+    );
+    const { controller, view } = setup();
+    await controller.start("tkt_1", () => null);
+    expect(view().phase).toBe("live");
+    const model = sdk.FakeModel.instances[0]!;
+    expect(model.calls).not.toContain("attach_avatar:av_base");
+    expect(model.calls).toContain("create_avatar");
+    expect(api.saveSupportCallAvatar).toHaveBeenCalledWith("tkt_1", {
+      avatarId: "av_new",
+      portraitSource: "composite",
+    });
+    await controller.end();
+  });
+
+  it("re-attaches the saved avatar when it was built from the same portrait", async () => {
+    api.getSupportCallBrief.mockResolvedValue(
+      brief({ avatarId: "av_comp", avatarPortraitSource: "composite" }),
+    );
+    const { controller, view } = setup();
+    await controller.start("tkt_1", () => null);
+    expect(view().phase).toBe("live");
+    const model = sdk.FakeModel.instances[0]!;
+    expect(model.calls).toContain("attach_avatar:av_comp");
+    expect(model.calls).not.toContain("create_avatar");
+    expect(api.saveSupportCallAvatar).not.toHaveBeenCalled();
+    await controller.end();
+  });
+});

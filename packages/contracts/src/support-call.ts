@@ -57,6 +57,16 @@ export const SupportCallPackage = z.object({
 });
 export type SupportCallPackage = z.infer<typeof SupportCallPackage>;
 
+/**
+ * The picture an avatar is built from: Nano Banana's composite of the agent holding the customer's
+ * product, or the plain base portrait while the composite is unavailable.
+ */
+export const SupportCallPortraitSource = z.enum(["composite", "base"]);
+export type SupportCallPortraitSource = z.infer<typeof SupportCallPortraitSource>;
+
+/** Response header on GET .../support-call/portrait naming its SupportCallPortraitSource. */
+export const SUPPORT_CALL_PORTRAIT_SOURCE_HEADER = "X-Portrait-Source";
+
 /** POST /api/tickets/:id/support-call/brief. */
 export const SupportCallBriefResponse = z.object({
   package: SupportCallPackage,
@@ -64,6 +74,8 @@ export const SupportCallBriefResponse = z.object({
   modelId: z.string(),
   /** Reactor avatar saved from an earlier call on this ticket (attach_avatar), else null. */
   avatarId: z.string().nullable(),
+  /** Portrait that avatar was built from; reuse it only when this call's portrait matches. */
+  avatarPortraitSource: SupportCallPortraitSource.nullable(),
   /** GET this for the agent portrait bytes (owner or support only). */
   portraitUrl: z.string(),
 });
@@ -72,6 +84,7 @@ export type SupportCallBriefResponse = z.infer<typeof SupportCallBriefResponse>;
 /** PUT /api/tickets/:id/support-call/avatar: remember the avatar create_avatar produced. */
 export const SaveSupportCallAvatarRequest = z.object({
   avatarId: z.string().min(1).max(128),
+  portraitSource: SupportCallPortraitSource,
 });
 export type SaveSupportCallAvatarRequest = z.infer<typeof SaveSupportCallAvatarRequest>;
 

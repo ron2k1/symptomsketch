@@ -2,6 +2,7 @@ import {
   ASSET_UPLOAD_FIELD,
   ERROR_COPY,
   ErrorCode,
+  SUPPORT_CALL_PORTRAIT_SOURCE_HEADER,
   TAKE_UPLOAD_FIELDS,
   paths,
   type CaseResponse,
@@ -34,6 +35,7 @@ import {
   type SaveSupportCallAvatarRequest,
   type SessionState,
   type SupportCallBriefResponse,
+  type SupportCallPortraitSource,
   type SupportCallTokenResponse,
   type SupportCallTranscript,
   type SupportInboxResponse,
@@ -202,8 +204,16 @@ export const saveSupportCallTranscript = (
     keepalive: new TextEncoder().encode(JSON.stringify(req)).length < KEEPALIVE_MAX_BYTES,
   });
 
+export interface SupportCallPortrait {
+  blob: Blob;
+  source: SupportCallPortraitSource;
+}
+
 /** The agent portrait bytes for create_avatar (Nano Banana composite or the base portrait). */
-export async function fetchSupportCallPortrait(url: string, init?: RequestInit): Promise<Blob> {
+export async function fetchSupportCallPortrait(
+  url: string,
+  init?: RequestInit,
+): Promise<SupportCallPortrait> {
   let res: Response;
   try {
     res = await fetch(url, { credentials: "same-origin", ...init });
@@ -211,7 +221,8 @@ export async function fetchSupportCallPortrait(url: string, init?: RequestInit):
     throw new ApiClientError("NETWORK_ERROR", "Could not reach the server.", 0);
   }
   if (!res.ok) throw await toError(res);
-  return res.blob();
+  const source = res.headers.get(SUPPORT_CALL_PORTRAIT_SOURCE_HEADER);
+  return { blob: await res.blob(), source: source === "composite" ? "composite" : "base" };
 }
 
 /* Authorized media URLs (same-origin; cookie carries auth). */
