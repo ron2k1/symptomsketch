@@ -19,14 +19,17 @@ import { LiveStage } from "@/features/preview/LiveStage";
 import { ReviewPanel } from "@/features/review/ReviewPanel";
 import { ConversationPanel } from "./ConversationPanel";
 import { ModeToggle } from "./ModeToggle";
-import { ProductPanel } from "./ProductPanel";
+import { ProcedureForm } from "./ProcedureForm";
+import { PhotoPicker, ProductPanel } from "./ProductPanel";
 import {
   currentPlan,
   isTheaterLayout,
   planById,
   previewablePlan,
   procedureFor,
+  stageNextStep,
   takesFor,
+  type StageStep,
 } from "./state";
 import { SendTakeButton } from "./SendTakeButton";
 import { TakeShelf } from "./TakeShelf";
@@ -245,8 +248,9 @@ export function RecreateTab() {
               onTakeUpdated={(take) => dispatch({ type: "take_upsert", take })}
             />
           ) : (
-            <div className="flex aspect-video items-center justify-center p-6 text-center text-sm text-muted-foreground">
-              {UI_STATE_COPY.empty.copy}. Upload a photo of your product to begin.
+            <div className="flex aspect-video flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground">
+              <p>{UI_STATE_COPY.empty.copy}. Upload a photo of your product to begin.</p>
+              <PhotoPicker primary />
             </div>
           )}
         </div>
@@ -303,46 +307,63 @@ export function RecreateTab() {
   );
 }
 
-/** Next step when the current purpose has no previewable plan yet. */
+/** Next step when the current purpose has no previewable plan yet, offered right on Recreate. */
 function StageHint() {
   const ws = useWorkspace();
   const caseData = ws.state.caseData;
   if (!caseData) return null;
   const purpose = caseData.mode;
-  const plan = currentPlan(caseData, purpose);
-  const planning = ws.state.planning === purpose;
-  if (plan || planning || !caseData.product) return null;
+  const step = stageNextStep(caseData, purpose);
+  if (!step || ws.state.planning === purpose) return null;
 
-  if (purpose === "solution" && caseData.procedures.length === 0) {
+  if (step === "procedure") {
     return (
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-3 text-sm">
-        <span>Add the approved procedure before showing the solution.</span>
-        <Button type="button" className="min-h-11" onClick={() => ws.goTab("issue")}>
-          Add procedure
-        </Button>
-      </div>
+      <section
+        aria-labelledby="stage-procedure-heading"
+        className="space-y-4 rounded-xl border border-border p-4"
+      >
+        <div className="space-y-1">
+          <h3 id="stage-procedure-heading" className="text-base font-semibold">
+            Add the approved procedure
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            The solution follows only the approved steps saved here.
+          </p>
+        </div>
+        <ProcedureForm />
+      </section>
     );
   }
-  if (purpose === "problem" && !caseData.originalAccount.trim()) {
-    return (
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-3 text-sm">
-        <span>Describe what happened first.</span>
-        <Button type="button" className="min-h-11" onClick={() => ws.goTab("issue")}>
-          Go to Issue
-        </Button>
-      </div>
-    );
-  }
+
+  // The Describe and refine box takes the description, the answer and corrections in place.
+  const focusComposer = () => document.getElementById("composer")?.focus();
+  const replan = () => void ws.submitPlan(purpose, null);
+  const hint = {
+    describe: ["Describe what happened to plan the movement.", "Describe it here", focusComposer],
+    plan: ["Ready to plan the movement from your description.", "Create the action plan", replan],
+    answer: [
+      "Answer the planner's question to start the preview.",
+      "Answer the question",
+      focusComposer,
+    ],
+    refine: ["This description cannot be previewed yet.", "Refine the description", focusComposer],
+    replan: ["The product photo changed since this plan.", "Plan for the new photo", replan],
+  } as const satisfies Record<
+    Exclude<StageStep, "procedure">,
+    readonly [string, string, () => void]
+  >;
+  const [text, action, run] = hint[step];
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-3 text-sm">
-      <span>Ready to plan the movement from your description.</span>
+      <span>{text}</span>
       <Button
         type="button"
         className="min-h-11"
         disabled={ws.state.planning !== null}
-        onClick={() => void ws.submitPlan(purpose, null)}
+        data-stage-step={step}
+        onClick={run}
       >
-        Create the action plan
+        {action}
       </Button>
     </div>
   );

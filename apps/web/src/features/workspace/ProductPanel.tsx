@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { errorMessage, uploadAsset } from "@/lib/api";
 import { formatBytes } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { useWorkspace } from "./WorkspaceProvider";
 
 /** Change photo: upload a new original; the server makes it the canonical product revision. */
@@ -69,6 +70,60 @@ function ProcedureSource({ procedure }: { procedure: ProcedureRevision }) {
   );
 }
 
+/** Upload or change the reference photo; also offered on an empty Recreate stage. */
+export function PhotoPicker({
+  className,
+  primary = false,
+}: {
+  className?: string;
+  primary?: boolean;
+}) {
+  const { state, captureBusy } = useWorkspace();
+  const { busy, error, change } = useChangePhoto();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const product = state.caseData?.product ?? null;
+
+  function onPick(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file) void change(file);
+  }
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept={LIMITS.uploadMimeTypes.join(",")}
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden
+        onChange={onPick}
+      />
+      <Button
+        type="button"
+        variant={primary ? "default" : "outline"}
+        className={cn("min-h-11", className)}
+        disabled={busy || captureBusy}
+        onClick={() => inputRef.current?.click()}
+      >
+        {busy ? <LoaderCircle className="animate-spin" aria-hidden /> : <ImageUp aria-hidden />}
+        {busy ? "Uploading photo" : product ? "Change photo" : "Upload a photo"}
+      </Button>
+      {product ? (
+        <p className="text-[12px] text-muted-foreground">
+          A new photo creates a new reference. Saved takes keep the photo they used.
+        </p>
+      ) : null}
+      {error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
 interface ProductPanelProps {
   purpose: Purpose;
   /** Show the immutable original account box (Recreate). Issue edits it in place instead. */
@@ -77,19 +132,11 @@ interface ProductPanelProps {
 }
 
 export function ProductPanel({ purpose, showAccount, procedure }: ProductPanelProps) {
-  const { state, productName, modelLabel, captureBusy } = useWorkspace();
-  const { busy, error, change } = useChangePhoto();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const { state, productName, modelLabel } = useWorkspace();
   const caseData = state.caseData;
   if (!caseData) return null;
   const product = caseData.product;
   const isDemo = product?.sourceType === "demo_photo";
-
-  function onPick(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (file) void change(file);
-  }
 
   return (
     <div className="space-y-4">
@@ -125,35 +172,7 @@ export function ProductPanel({ purpose, showAccount, procedure }: ProductPanelPr
         </div>
       )}
 
-      <input
-        ref={inputRef}
-        type="file"
-        accept={LIMITS.uploadMimeTypes.join(",")}
-        className="sr-only"
-        tabIndex={-1}
-        aria-hidden
-        onChange={onPick}
-      />
-      <Button
-        type="button"
-        variant="outline"
-        className="min-h-11 w-full"
-        disabled={busy || captureBusy}
-        onClick={() => inputRef.current?.click()}
-      >
-        {busy ? <LoaderCircle className="animate-spin" aria-hidden /> : <ImageUp aria-hidden />}
-        {busy ? "Uploading photo" : product ? "Change photo" : "Upload a photo"}
-      </Button>
-      {product ? (
-        <p className="text-[12px] text-muted-foreground">
-          A new photo creates a new reference. Saved takes keep the photo they used.
-        </p>
-      ) : null}
-      {error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
+      <PhotoPicker className="w-full" />
 
       {showAccount && caseData.ownerRole === "customer" && caseData.originalAccount ? (
         <section

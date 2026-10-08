@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { createProcedure, errorMessage, patchCase } from "@/lib/api";
-import { procedureFor } from "./state";
+import { procedureForPhoto } from "./state";
 import { useWorkspace } from "./WorkspaceProvider";
 
 /**
@@ -43,13 +43,15 @@ export function ProcedureForm() {
   }, [caseData, draft, catalogProduct, dispatch]);
 
   if (!caseData) return null;
-  const existing = procedureFor(caseData, null);
+  // The planner pairs a solution with a procedure saved for the current photo only.
+  const existing = procedureForPhoto(caseData);
   const hasSolutionPlan = caseData.solutionPlanId !== null;
   const planning = state.planning === "solution";
 
   function createSolutionPlan() {
     void ws.submitPlan("solution", null);
-    ws.goTab("recreate");
+    // Recreate renders this form under the stage too; stay put there.
+    if (ws.tab !== "recreate") ws.goTab("recreate");
   }
 
   if (existing && !revising) {

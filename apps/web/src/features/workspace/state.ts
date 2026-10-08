@@ -280,3 +280,30 @@ export function procedureFor(c: CaseDetail, plan: PlanRevision | null): Procedur
   }
   return c.procedures.length > 0 ? (c.procedures[c.procedures.length - 1] ?? null) : null;
 }
+
+/** Latest procedure saved for the current photo; the planner only plans a solution from one. */
+export function procedureForPhoto(c: CaseDetail): ProcedureRevision | null {
+  return c.procedures.findLast((p) => p.productRevisionId === c.productRevisionId) ?? null;
+}
+
+/**
+ * What the stage offers when the current purpose cannot be previewed yet, so a visitor can act
+ * from Recreate itself. Null when the stage is ready (or has no photo; the stage asks for one).
+ */
+export type StageStep = "procedure" | "describe" | "plan" | "answer" | "refine" | "replan";
+
+export function stageNextStep(c: CaseDetail, purpose: Purpose): StageStep | null {
+  if (!c.product) return null;
+  const plan = currentPlan(c, purpose);
+  if (!plan) {
+    if (purpose === "solution") return "procedure";
+    return c.originalAccount.trim() ? "plan" : "describe";
+  }
+  if (previewablePlan(c, purpose)) return null;
+  if (plan.status === "needs_clarification") return "answer";
+  if (plan.status === "invalid") return "refine";
+  if (c.productRevisionId && plan.productRevisionId !== c.productRevisionId) {
+    return purpose === "solution" && !procedureForPhoto(c) ? "procedure" : "replan";
+  }
+  return null;
+}
