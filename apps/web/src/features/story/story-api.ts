@@ -1,12 +1,18 @@
 import {
   ERROR_COPY,
   ErrorCode,
+  STORY_LIMITS,
+  STORY_UPLOAD_FIELDS,
   storyPaths,
+  type StoryBeatsUpload,
   type StoryDirectorRequest,
   type StoryDirectorResponse,
+  type StorySubmitResponse,
   type StoryTokenResponse,
+  type TicketStoryResponse,
 } from "@symptomsketch/contracts";
 import { ApiClientError } from "@/lib/api";
+import type { PlayedBeat } from "./story-state";
 
 async function failure(res: Response): Promise<ApiClientError> {
   try {
@@ -61,3 +67,43 @@ export async function fetchPhoto(url: string): Promise<Blob> {
   if (!res.ok) throw await failure(res);
   return res.blob();
 }
+
+/** The beats JSON sent with the reel: exactly the scenes that played and the cards offered. */
+export function beatsUpload(
+  beats: PlayedBeat[],
+  clipSeconds: number,
+  durationMs: number,
+): StoryBeatsUpload {
+  return {
+    beats: beats.map(({ label, caption, prompt, custom }) => ({ label, caption, prompt, custom })),
+    offered: beats.map((b) => b.offered),
+    clipSeconds,
+    durationMs: Math.max(0, Math.round(durationMs)),
+  };
+}
+
+export interface StoryParts {
+  reel: Blob;
+  frame: Blob | null;
+  beats: StoryBeatsUpload;
+}
+
+/** POST the finished story (reel + last frame + beats) for the case owner. */
+export function sendStory(caseId: string, parts: StoryParts): Promise<StorySubmitResponse> {
+  if (parts.reel.size > STORY_LIMITS.reelMaxBytes) {
+    return Promise.reject(
+      new ApiClientError("PAYLOAD_TOO_LARGE", "The story recording is too large to send.", 413),
+    );
+  }
+  const form = new FormData();
+  form.append(STORY_UPLOAD_FIELDS.beats, JSON.stringify(parts.beats));
+  const ext = parts.reel.type.includes("mp4") ? "mp4" : "webm";
+  form.append(STORY_UPLOAD_FIELDS.reel, parts.reel, `story.${ext}`);
+  if (parts.frame && parts.frame.size <= STORY_LIMITS.lastFrameMaxBytes) {
+    form.append(STORY_UPLOAD_FIELDS.frame, parts.frame, "last-frame.png");
+  }
+  return storyFetch<StorySubmitResponse>(storyPaths.submit(caseId), { method: "POST", body: form });
+}
+
+export const getTicketStory = (ticketId: string, signal?: AbortSignal) =>
+  storyFetch<TicketStoryResponse>(storyPaths.ticketStory(ticketId), { signal });

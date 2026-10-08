@@ -36,6 +36,8 @@ export const STORY_LIMITS = {
   reelMaxBytes: 80 * 1024 * 1024,
   lastFrameMaxBytes: 6 * 1024 * 1024,
   beatsJsonMaxBytes: 64 * 1024,
+  /** Stories one case can send to support (each carries a reel of up to reelMaxBytes). */
+  storiesPerCaseMax: 5,
 } as const;
 
 export const FAST_H3_MODEL_NAME = "reactor/fast-h3";
@@ -162,9 +164,14 @@ export const StoryBeatsUpload = z.object({
 });
 export type StoryBeatsUpload = z.infer<typeof StoryBeatsUpload>;
 
+/**
+ * A sent story. It belongs to the CASE: support sees it on that case's ticket, whether the ticket
+ * existed when the story was sent or is sent later through the normal Support flow.
+ */
 export const TicketStory = z.object({
   id: Id,
-  ticketId: Id,
+  /** The case's live ticket when the story was sent (null: no ticket yet). */
+  ticketId: Id.nullable(),
   caseId: Id,
   beats: z.array(StoryBeatRecord),
   offered: z.array(z.array(z.string())),
@@ -172,13 +179,14 @@ export const TicketStory = z.object({
   durationMs: z.number().int(),
   reelMime: z.string(),
   reelBytes: z.number().int(),
-  reelUrl: z.string(),
+  /** Ticket-scoped media URLs (null when there is no ticket to read them through yet). */
+  reelUrl: z.string().nullable(),
   frameUrl: z.string().nullable(),
   createdAt: Timestamp,
 });
 export type TicketStory = z.infer<typeof TicketStory>;
 
-export const StorySubmitResponse = z.object({ ticketId: Id, story: TicketStory });
+export const StorySubmitResponse = z.object({ ticketId: Id.nullable(), story: TicketStory });
 export type StorySubmitResponse = z.infer<typeof StorySubmitResponse>;
 
 export const TicketStoryResponse = z.object({ story: TicketStory.nullable() });

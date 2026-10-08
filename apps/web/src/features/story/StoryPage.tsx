@@ -195,7 +195,12 @@ function StoryWorkspace({ caseId, caseData }: { caseId: string; caseData: CaseDe
         </p>
         {phase === "live" ? <ChoicePanel story={story} state={state} /> : null}
         {phase === "ended" ? (
-          <StorySendPanel caseId={caseId} beats={state.beats} recorder={recorder} />
+          <StorySendPanel
+            caseId={caseId}
+            beats={state.beats}
+            recorder={recorder}
+            clipSeconds={story.effectiveSeconds ?? STORY_LIMITS.clipSeconds}
+          />
         ) : null}
       </div>
       <aside className="space-y-4">

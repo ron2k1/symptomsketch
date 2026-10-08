@@ -28,6 +28,7 @@ import {
   type ReactorToken,
 } from "../providers/reactor-token.ts";
 import { type StoryCaseData, arcState, actForBeat, runDirector } from "./director.ts";
+import { registerStorySubmit } from "./submit.ts";
 
 type Minter = (ctx: AppContext) => Promise<ReactorToken>;
 
@@ -92,6 +93,7 @@ function mapDirectorError(err: unknown): AppError {
 /**
  * POST STORY_ROUTES.token     -> StoryTokenResponse (owner of an active case, customer access)
  * POST STORY_ROUTES.director  StoryDirectorRequest -> StoryDirectorResponse (same auth)
+ * Send-to-support + ticket reads: ./submit.ts
  */
 export function register(router: Router, ctx: AppContext): void {
   router.post(STORY_ROUTES.token, async (req, res) => {
@@ -168,4 +170,6 @@ export function register(router: Router, ctx: AppContext): void {
     };
     res.json(body);
   });
+
+  registerStorySubmit(router, ctx);
 }
