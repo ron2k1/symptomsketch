@@ -258,7 +258,6 @@ export class PreviewController {
     if (hidden && this.hiddenSince === null) this.hiddenSince = performance.now();
     if (!hidden) this.hiddenSince = null;
     if (this.view.hidden !== hidden) this.update({ hidden });
-    if (!hidden && this.run) this.checkPolicy(this.run); // a held rotation runs now
   }
 
   /** Fresh output frames of the current run (clip capture). Returns an unsubscribe. */

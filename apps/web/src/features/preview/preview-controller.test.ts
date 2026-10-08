@@ -427,6 +427,20 @@ describe("PreviewController (infinite live preview)", () => {
     expect(h.createReactorToken).toHaveBeenCalledTimes(1);
   });
 
+  it("a hidden tab still rotates at 4:40 and stops only after 2 hidden minutes", async () => {
+    const { c, preview } = await startLive();
+    await vi.advanceTimersByTimeAsync(4 * MIN + 30_000);
+    c.setHidden(true); // 10 s before rotation is due
+    h.createReactorToken.mockResolvedValueOnce({ ...TOKEN, leaseId: "lease_2" });
+    await vi.advanceTimersByTimeAsync(30_000); // past the old hold-then-stop point (4:55)
+    expect(preview.close).toHaveBeenCalledTimes(1);
+    expect(h.createReactorToken).toHaveBeenCalledTimes(2);
+    expect(c.current).toMatchObject({ status: "waiting_frames", reconnecting: true });
+    expect(c.current.notice).toBeNull();
+    await vi.advanceTimersByTimeAsync(2 * MIN - 30_000);
+    expect(c.current).toMatchObject({ status: "idle", notice: LIVE_COPY.hiddenStop });
+  });
+
   it("Replay movement on a sketched product restarts the run instead of replaying mid-run", async () => {
     const { c, preview } = await startLive();
     preview.motionProgram = { steps: [] }; // a motion sketch drives this plan

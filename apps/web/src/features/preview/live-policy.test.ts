@@ -37,14 +37,13 @@ describe("evaluateLivePolicy (infinite preview)", () => {
     });
   });
 
-  it("holds a due rotation while hidden, rotates on return, stops before the lease lapses", () => {
-    const hidden = { ...visible, hiddenSince: 270_000 };
-    // Rotation is due (4:40) but the tab is hidden: no token for an unwatched tab yet.
-    expect(evaluateLivePolicy({ ...hidden, now: 285_000 })).toEqual({ kind: "ok" });
-    // Back in view before the lease lapses: rotate now.
-    expect(evaluateLivePolicy({ ...visible, now: 290_000 })).toEqual({ kind: "rotate" });
-    // Still hidden at the last safe moment: stop as hidden rather than lose the lease.
-    expect(evaluateLivePolicy({ ...hidden, now: 5 * MIN - LIVE_POLICY.leaseMarginMs })).toEqual({
+  it("rotates on time in a hidden tab instead of stopping early at the lease cap", () => {
+    // Hidden one second before rotation was due: the old policy stopped 15 s later as "hidden".
+    const hidden = { ...visible, hiddenSince: 279_000 };
+    expect(evaluateLivePolicy({ ...hidden, now: 280_000 })).toEqual({ kind: "rotate" });
+    expect(evaluateLivePolicy({ ...hidden, now: 295_000 })).toEqual({ kind: "rotate" });
+    // The 2 minute hidden stop still applies.
+    expect(evaluateLivePolicy({ ...hidden, now: 279_000 + 2 * MIN })).toEqual({
       kind: "stop",
       reason: "hidden",
     });

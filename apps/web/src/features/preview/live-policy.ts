@@ -12,8 +12,6 @@ export const LIVE_POLICY = {
   connectionMaxMs: LIMITS.previewMaxMs,
   /** Rotate this long before the cap: covers a token mint, connect and first frame. */
   rotateLeadMs: 20_000,
-  /** A hidden tab past its rotation time stops this long before the lease lapses. */
-  leaseMarginMs: 5_000,
   /** Waits before reconnect attempts 1..n after unplanned drops; then the preview gives up. */
   reconnectBackoffMs: [1_000, 3_000, 8_000] as readonly number[],
   /** Fresh output this long after a reconnect resets the drop counter. */
@@ -44,13 +42,11 @@ export function evaluateLivePolicy(
     return { kind: "stop", reason: "hidden" };
   }
   if (input.reconnecting || connectionOpenedAt === null) return { kind: "ok" };
-  const age = now - connectionOpenedAt;
-  if (age < policy.connectionMaxMs - policy.rotateLeadMs) return { kind: "ok" };
-  if (hiddenSince === null) return { kind: "rotate" };
-  // Hidden tabs throttle timers and skip video frame callbacks, so a reconnect there could stall:
-  // hold the rotation until the tab is back, unless the lease would lapse first.
-  if (age >= policy.connectionMaxMs - policy.leaseMarginMs) {
-    return { kind: "stop", reason: "hidden" };
+  // A hidden tab rotates on time too: holding it would end the preview at the lease cap, after
+  // as little as a second in the background. Fetch and WebRTC are not throttled; the new
+  // connection just waits for its first frame until the tab is visible again.
+  if (now - connectionOpenedAt >= policy.connectionMaxMs - policy.rotateLeadMs) {
+    return { kind: "rotate" };
   }
   return { kind: "ok" };
 }
