@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { containRect } from "./geometry";
+import { containRect, stageRect } from "./geometry";
 import { evaluateSessionClock } from "./session-clock";
 
 describe("evaluateSessionClock (spec 8: 90 s idle, 5 min max)", () => {
@@ -50,5 +50,20 @@ describe("containRect", () => {
     expect(r.h).toBe(720);
     expect(r.w).toBeCloseTo(1600 * (720 / 1067), 6);
     expect(r.x).toBeGreaterThan(0);
+  });
+});
+
+describe("stageRect", () => {
+  it("fills the 16:9 stage with a 3:2 photo (trims ~16% of its height, no side bars)", () => {
+    const r = stageRect(1600, 1067, 1280, 720);
+    expect(r.x).toBe(0);
+    expect(r.w).toBe(1280);
+    expect(r.y).toBeLessThan(0);
+    expect(r.w / r.h).toBeCloseTo(1600 / 1067, 6);
+  });
+
+  it("keeps a portrait photo letterboxed so the product is not cropped away", () => {
+    const r = stageRect(1200, 1600, 1280, 720);
+    expect(r).toEqual(containRect(1200, 1600, 1280, 720));
   });
 });

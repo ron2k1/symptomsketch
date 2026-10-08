@@ -2,8 +2,8 @@ import {
   STAGE_FPS,
   STAGE_HEIGHT,
   STAGE_WIDTH,
-  containRect,
   drawLetterboxedStill,
+  stageRect,
   stillSize,
   type Rect,
   type StillImage,
@@ -20,7 +20,7 @@ import {
 export interface StillSource {
   canvas: HTMLCanvasElement;
   track: MediaStreamTrack;
-  /** Where the still sits on the canvas (contain-fit), for mapping image coords to the frame. */
+  /** Where the still sits on the canvas (stageRect), for mapping image coords to the frame. */
   fore: Rect;
   /** Animate the product region from `t0` (performance.now() of the run's first real output frame). */
   play(program: MotionProgram, t0: number): void;
@@ -94,8 +94,8 @@ function drawSketch(
 }
 
 /**
- * The X2 SOURCE canvas (docs/providers/reactor-x2.md section 7): the product still letterboxed onto
- * a fixed 16:9 canvas, repainted at 24 fps because captureStream only emits on repaint. With a
+ * The X2 SOURCE canvas (docs/providers/reactor-x2.md section 7): the product still placed on a
+ * fixed 16:9 canvas by stageRect, repainted at 24 fps because captureStream only emits on repaint. With a
  * known product region, play() animates the motion sketch (section 9) on the same canvas and track.
  * Separate from the recording canvas and the decorative stage UI (spec 12).
  */
@@ -109,7 +109,7 @@ export function createStillSource(
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("canvas 2d unavailable");
   const { w, h } = stillSize(img);
-  const fore = containRect(w, h, STAGE_WIDTH, STAGE_HEIGHT);
+  const fore = stageRect(w, h, STAGE_WIDTH, STAGE_HEIGHT);
   let active: { program: MotionProgram; t0: number } | null = null;
 
   const draw = () => {
