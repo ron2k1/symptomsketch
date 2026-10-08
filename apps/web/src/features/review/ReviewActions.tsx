@@ -139,7 +139,6 @@ export function ReviewActions({ take, onTakeUpdated, onDecision, onConflict }: R
       {canSendFlagged && !confirmingOverride ? (
         <Button
           type="button"
-          variant="ghost"
           className="min-h-11"
           disabled={pending !== null}
           onClick={() => setConfirmingOverride(true)}
@@ -160,7 +159,6 @@ export function ReviewActions({ take, onTakeUpdated, onDecision, onConflict }: R
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
-              variant="outline"
               className="min-h-11"
               disabled={pending !== null}
               onClick={() => decide("accept", true)}
