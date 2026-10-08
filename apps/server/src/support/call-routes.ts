@@ -4,18 +4,23 @@ import {
   ROUTES,
   SUPPORT_CALL_MODEL,
   paths,
+  SaveSupportCallAvatarRequest,
+  type OkResponse,
   type SupportCallBriefResponse,
   type SupportCallTokenResponse,
 } from "@symptomsketch/contracts";
 import type { AppContext } from "../context.ts";
+import { now } from "../db/index.ts";
 import { bumpSessionCounter, limiterFor } from "../domain/leases.ts";
 import { AppError } from "../http/errors.ts";
+import { sendFileWithRange } from "../http/range.ts";
 import { requireSession } from "../http/session.ts";
-import { param } from "../http/validate.ts";
+import { param, parseBody } from "../http/validate.ts";
 import { GeminiError } from "../providers/gemini-client.ts";
 import { ReactorTokenError, mintReactorToken } from "../providers/reactor-token.ts";
 import { loadTicketForViewer } from "./access.ts";
 import { cachedPackage, ensureCallPackage, getCallRow } from "./call-brief.ts";
+import { portraitSettled, ticketPortrait } from "./call-portrait.ts";
 
 /** Exactly what the route asks the minter for; the JWT itself never leaves the response body. */
 export interface SupportCallMintRequest {
@@ -43,6 +48,8 @@ export function setSupportCallMinterFor(ctx: AppContext, minter: SupportCallMint
  * Demo Support only (loadTicketForViewer: anything else is a 404).
  *   POST ROUTES.ticketSupportCallToken -> SupportCallTokenResponse (max_sessions=1, ~300 s cap)
  *   POST ROUTES.ticketSupportCallBrief -> SupportCallBriefResponse (Gemini once per ticket, cached)
+ *   GET  ROUTES.ticketSupportCallPortrait -> image/jpeg (Nano Banana composite, else base portrait)
+ *   PUT  ROUTES.ticketSupportCallAvatar  SaveSupportCallAvatarRequest -> OkResponse
  */
 export function registerSupportCall(router: Router, ctx: AppContext): void {
   router.post(ROUTES.ticketSupportCallToken, async (req, res) => {
@@ -96,6 +103,32 @@ export function registerSupportCall(router: Router, ctx: AppContext): void {
       avatarId: getCallRow(ctx, ticket.id)?.avatar_id ?? null,
       portraitUrl: paths.ticketSupportCallPortrait(ticket.id),
     };
+    res.json(body);
+  });
+
+  router.get(ROUTES.ticketSupportCallPortrait, async (req, res) => {
+    const session = requireSession(req);
+    const ticket = loadTicketForViewer(ctx, session, param(req, "ticketId"));
+    if (!portraitSettled(ctx, ticket.id)) limiterFor(ctx).take("supportCallPortrait", session.id);
+    const portrait = await ticketPortrait(ctx, ticket);
+    res.set("X-Portrait-Source", portrait.source);
+    await sendFileWithRange(res, portrait.path, "image/jpeg");
+  });
+
+  router.put(ROUTES.ticketSupportCallAvatar, (req, res) => {
+    const session = requireSession(req);
+    const ticket = loadTicketForViewer(ctx, session, param(req, "ticketId"));
+    const input = parseBody(SaveSupportCallAvatarRequest, req);
+    const ts = now();
+    ctx.db
+      .prepare(
+        `INSERT INTO ticket_support_calls (ticket_id, avatar_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?)
+         ON CONFLICT(ticket_id) DO UPDATE SET avatar_id = excluded.avatar_id,
+           updated_at = excluded.updated_at`,
+      )
+      .run(ticket.id, input.avatarId, ts, ts);
+    const body: OkResponse = { ok: true };
     res.json(body);
   });
 }

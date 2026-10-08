@@ -20,7 +20,10 @@ import {
 } from "../providers/gemini-client.ts";
 import { setGeminiFor } from "../providers/planner.ts";
 import { ReactorTokenError } from "../providers/reactor-token.ts";
+import sharp from "sharp";
+import type { GenerateImageRequest } from "../providers/nano-banana.ts";
 import { CALL_GROUND_RULES } from "./call-brief.ts";
+import { setNanoBananaFor } from "./call-portrait.ts";
 import { setSupportCallMinterFor, type SupportCallMintRequest } from "./call-routes.ts";
 import {
   SUPPORT_CODE,
@@ -261,4 +264,101 @@ test("brief: a provider failure is a bounded error and nothing is cached", async
   } finally {
     briefReply = saved;
   }
+});
+
+const imageRequests: GenerateImageRequest[] = [];
+let imageFails = false;
+
+async function stubJpeg(): Promise<Buffer> {
+  return sharp({ create: { width: 30, height: 40, channels: 3, background: { r: 9, g: 9, b: 9 } } })
+    .jpeg()
+    .toBuffer();
+}
+
+function useStubImages(): void {
+  setNanoBananaFor(h.ctx, {
+    generateImage: async (req) => {
+      imageRequests.push(req);
+      if (imageFails) throw Object.assign(new Error("x"), { code: "ASSESSMENT_FAILED" });
+      return { bytes: await stubJpeg(), mime: "image/jpeg", modelId: "stub-image", latencyMs: 1 };
+    },
+  });
+}
+
+test("portrait: Nano Banana composites the agent with the ticket's product, cached per ticket", async () => {
+  useStubImages();
+  const ticket = await submitTicket();
+  const before = imageRequests.length;
+  const res = await call(h.base, "GET", paths.ticketSupportCallPortrait(ticket.id), {
+    cookie: alice.cookie,
+  });
+  assert.equal(res.status, 200);
+  assert.equal(res.res.headers.get("content-type"), "image/jpeg");
+  assert.equal(res.res.headers.get("x-portrait-source"), "composite");
+  assert.equal(imageRequests.length, before + 1);
+  const req = imageRequests.at(-1)!;
+  assert.equal(req.aspectRatio, "3:4");
+  assert.equal(req.timeoutMs, 25_000);
+  assert.equal(req.images?.length, 2, "base agent portrait + the customer's product photo");
+  assert.match(req.prompt, /fictional/);
+
+  const staff = await call(h.base, "GET", paths.ticketSupportCallPortrait(ticket.id), {
+    cookie: support.cookie,
+  });
+  assert.equal(staff.status, 200);
+  assert.equal(staff.res.headers.get("x-portrait-source"), "composite");
+  assert.equal(imageRequests.length, before + 1, "served from the per-ticket cache");
+
+  const stranger = await call(h.base, "GET", paths.ticketSupportCallPortrait(ticket.id), {
+    cookie: bob.cookie,
+  });
+  assert.equal(stranger.status, 404);
+});
+
+test("portrait: a failed composite falls back to the base portrait and is not retried", async () => {
+  useStubImages();
+  const ticket = await submitTicket();
+  imageFails = true;
+  try {
+    const before = imageRequests.length;
+    const first = await call(h.base, "GET", paths.ticketSupportCallPortrait(ticket.id), {
+      cookie: alice.cookie,
+    });
+    assert.equal(first.status, 200);
+    assert.equal(first.res.headers.get("x-portrait-source"), "base");
+    const again = await call(h.base, "GET", paths.ticketSupportCallPortrait(ticket.id), {
+      cookie: alice.cookie,
+    });
+    assert.equal(again.res.headers.get("x-portrait-source"), "base");
+    assert.equal(imageRequests.length, before + 1);
+  } finally {
+    imageFails = false;
+  }
+});
+
+test("avatar id: saved per ticket and handed back with the brief", async () => {
+  const ticket = await submitTicket();
+  const bad = await call(h.base, "PUT", paths.ticketSupportCallAvatar(ticket.id), {
+    cookie: alice.cookie,
+    body: { avatarId: "" },
+  });
+  assert.equal(bad.status, 400);
+  const stranger = await call(h.base, "PUT", paths.ticketSupportCallAvatar(ticket.id), {
+    cookie: bob.cookie,
+    body: { avatarId: "av_123" },
+  });
+  assert.equal(stranger.status, 404);
+  const saved = await call(h.base, "PUT", paths.ticketSupportCallAvatar(ticket.id), {
+    cookie: alice.cookie,
+    body: { avatarId: "av_123" },
+  });
+  assert.equal(saved.status, 200);
+  const brief = await call<SupportCallBriefResponse>(
+    h.base,
+    "POST",
+    paths.ticketSupportCallBrief(ticket.id),
+    { cookie: alice.cookie },
+  );
+  assert.equal(brief.status, 200);
+  assert.equal(brief.body.avatarId, "av_123");
 });
