@@ -8,9 +8,9 @@ import { defineConfig, type Plugin } from "vite";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-// Local API the dev server and `vite preview` proxy /api to. Defaults to the orchestrator's :3000;
+// Local API the dev server and `vite preview` proxy /api to. Defaults to :3030 (3000 is often taken by other local dev servers);
 // SS_API_PORT lets a second local stack (other port) run without editing this file.
-const apiTarget = `http://127.0.0.1:${process.env.SS_API_PORT ?? "3000"}`;
+const apiTarget = `http://127.0.0.1:${process.env.SS_API_PORT ?? "3030"}`;
 const proxy = { "/api": { target: apiTarget, changeOrigin: false } };
 
 // js-sdk 3.1 loads its client with import("./wasm/reactor_wasm.js") and fetches the .wasm relative to

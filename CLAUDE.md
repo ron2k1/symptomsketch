@@ -28,7 +28,7 @@ Reactor X2 makes the moving visual; the human reviews the exact MP4.
 
 ## Commands (run from repo root)
 
-- `pnpm dev`: server on :3000 + Vite on 127.0.0.1:5173 (proxies `/api`).
+- `pnpm dev`: server on :3030 + Vite on 127.0.0.1:5173 (proxies `/api`).
 - Gates, all must pass before any commit: `pnpm typecheck && pnpm lint && pnpm test && pnpm build`.
 - `pnpm format` fixes prettier drift. shadcn primitives in `src/components/ui` are prettier-ignored
   except `modern-hero.tsx`.

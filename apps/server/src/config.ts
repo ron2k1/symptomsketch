@@ -28,7 +28,7 @@ const intWithDefault = (def: number, min: number, max: number) =>
 /** Every variable from .env.example (+ NODE_ENV, FFPROBE_PATH). */
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-  PORT: intWithDefault(3000, 0, 65535),
+  PORT: intWithDefault(3030, 0, 65535),
   DATA_DIR: optionalString,
   APP_ORIGIN: optionalString,
   REACTOR_API_KEY: optionalString,

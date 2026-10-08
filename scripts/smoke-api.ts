@@ -1,7 +1,7 @@
 /**
  * Real-provider API smoke test (local only). Run against a server that is already up:
  *
- *   pnpm exec tsx scripts/smoke-api.ts                       # http://127.0.0.1:3000
+ *   pnpm exec tsx scripts/smoke-api.ts                       # http://127.0.0.1:3030
  *   SMOKE_BASE_URL=http://127.0.0.1:3108 pnpm exec tsx scripts/smoke-api.ts
  *
  * Calls real Gemini (planner + critic) and real Reactor (token mint) through the app's own routes.
@@ -38,7 +38,7 @@ import {
   SmokeFailure,
 } from "./smoke-client.ts";
 
-const BASE = (process.env.SMOKE_BASE_URL ?? "http://127.0.0.1:3000").replace(/\/+$/, "");
+const BASE = (process.env.SMOKE_BASE_URL ?? "http://127.0.0.1:3030").replace(/\/+$/, "");
 const ACCOUNT = "The vacuum stops and then jerks backward once. It only happens sometimes.";
 const CORRECTION = "The backward movement is smaller and happens immediately.";
 const TAKE_TIMEOUT_MS = 240_000;
