@@ -80,6 +80,51 @@ clean plate of rug, and the cutout slides along the planned direction while `set
 the same path. X2 renders the result; the sketch only guides it. Lab results and the full mechanism
 are in `docs/providers/reactor-x2.md` section 9. Nothing on screen is a stock clip or fixture.
 
+## Story mode (Interactive Narrative)
+
+A second way to show what happened: the customer tells it as a short story with sound and steers it
+scene by scene. MiniMax FastH3 on Reactor renders every scene (text and image to video with
+synchronized audio). Gemini acts as the story director: from the real case (product, account, what
+was tried, the product photo) it writes the opening scene and, after every scene, three different
+things that could have happened next, each with a full FastH3 prompt that names the product's sound.
+All three are queued on FastH3 at once as branches that continue from the clip on screen, so a pick
+that is already built plays at once. Free text works too. The story follows three acts (setup, what
+went wrong, the moment it failed), offers to end after three scenes and stops at six.
+
+The browser records exactly what played (video and generated sound, webm) and can send it to
+support with the scene list and the last frame. It lands on the case's ticket; a story sent before
+the case has a ticket waits on the case and shows on the ticket once it is sent from the Support
+tab. Staff see it on the ticket as "Customer story (MiniMax FastH3)". Nothing is canned: every
+scene, choice and caption is a live Gemini call and every clip a live FastH3 call; a failure shows
+an error with Retry, never a substitute. Provider facts and measured timings:
+`docs/providers/reactor-fast-h3.md`.
+
+Support can answer in kind with **Write the ending** under the story on the ticket: they type the
+fix in plain words, Gemini turns it into one or two scenes, and a new FastH3 session plays them
+starting from the last frame of the customer's story (scene 1 opens from that frame, scene 2
+continues from scene 1). Only support can call it; the ending plays and is recorded in the staff
+browser for a replay.
+
+Two-minute demo script:
+
+1. (0:00) Open a robot vacuum case whose account is filled in and that was already sent to Demo
+   Support. On the Issue tab click **Tell it as a story**.
+2. (0:05) Click **Start the story**. Point at the queue strip on the right: the opening clip is
+   queued from the case's own photo, then builds. It plays about 20 s after the click, with sound.
+3. (0:25) Three choice cards appear, each showing Queued, Building or Ready and its FastH3 clip id.
+   Pick one that is still building: it jumps to the front and plays about 5 s later; the other two
+   turn "popped" in the strip.
+4. (0:35) Pick a card that says Ready: it plays in under half a second. The readout shows build
+   time, pick to play (built vs. building) and director latency, all measured live.
+5. (0:45) Type your own beat in **Something else happened? Say it in your words.** and click
+   **Show this instead**.
+6. (0:55) Click **That's what happened**, then **Send this story to support**.
+7. (1:05) In the support browser open the ticket: the "Customer story (MiniMax FastH3)" section has
+   the reel and every scene with the choices offered, the typed beat and the exact FastH3 prompt.
+8. (1:20) Under it, type the fix in **How to fix it** and click **Write the ending**. Gemini writes
+   it in about 4 s, the first ending scene plays from the story's last frame about 11 s after the
+   click, the second follows, and the recorded ending is ready to replay about 25 s after the click.
+
 ## Known limitations
 
 - The motion sketch only runs for the robot vacuum demo photo, the one still with a measured product
