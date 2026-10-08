@@ -7,12 +7,30 @@
    take, review the checked MP4, send it to Demo Support.
 3. In a second browser profile open `/support`, reply with text or a demonstration clip; the
    customer sees it in their Support tab.
+4. Back in the customer's Support tab, click "Talk to support now" for a live call with Sam, an AI
+   support agent who already knows the ticket. End the call; the transcript appears on the ticket
+   in `/support`.
 
 ## What it is
 
 Visual context for product support. Gemini turns a customer's words into an explicit action plan
 and later checks the finished clip against it; Reactor X2 turns the product photo into a moving
 reenactment; the person who described it approves the exact file before anyone else sees it.
+
+## Two Reactor models
+
+| Model                  | Where                                | What it does                                                                                                                               |
+| ---------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Reactor X2             | Recreate tab, support work cases     | Turns the product photo into the moving reenactment the customer reviews and sends                                                         |
+| Reactor Vidu S2 Avatar | Customer Support tab, after a ticket | "Talk to support now": a live voice or text call with Sam, a fictional AI agent whose face Nano Banana made holding the customer's product |
+
+The avatar call is grounded in the ticket: Gemini writes Sam's persona and opening line once per
+ticket from the account, the plan, the critic verdict and what is still unresolved, and the server
+appends fixed rules (Sam says it is an AI, never claims a certain cause, suggests one safe check at
+a time, offers the human team). Sam's portrait is AI-generated with Gemini Nano Banana and is a
+fictional person; each ticket gets a composite of Sam holding that ticket's product, with the base
+portrait as the fallback. The final transcript is stored on the ticket as "AI support agent call
+transcript" for Demo Support. Verified facts and timings: `docs/providers/reactor-vidu-s2-avatar.md`.
 
 ## Setup
 
@@ -30,8 +48,8 @@ Environment variables (root `.env`, read by `apps/server/src/config.ts`; names o
 
 | Name                                                             | Purpose                                                                |
 | ---------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `REACTOR_API_KEY`                                                | Server-side key; the browser only gets short-lived X2 JWTs             |
-| `GEMINI_API_KEY`                                                 | Planner and critic                                                     |
+| `REACTOR_API_KEY`                                                | Server-side key; the browser only gets short-lived X2 / avatar JWTs    |
+| `GEMINI_API_KEY`                                                 | Planner, critic, call brief and Nano Banana portraits                  |
 | `DEMO_ACCESS_CODE`                                               | Code a customer enters before a case is created                        |
 | `DEMO_SUPPORT_CODE`                                              | Code for the `/support` workspace                                      |
 | `SESSION_SECRET`                                                 | Signs the `ss_session` cookie (random per boot if unset)               |
@@ -63,6 +81,9 @@ Customer:
    correction.
 5. Accept the take (a note is required when the critic could not verify it), then send it from the
    Support tab. Support replies show up in the same tab.
+6. Talk to support now (Support tab, once a ticket exists): Sam joins in about 70 s on a ticket's
+   first call (Reactor builds the avatar) and in about 8 s after that. Type, or turn the mic on;
+   Interrupt and End call are always there, and calls stop after 4 minutes.
 
 Support:
 
@@ -70,6 +91,8 @@ Support:
 2. Open a ticket and play the customer's clip, then open the work case.
 3. Show the solution: a solution plan, live preview and recorded take, reviewed the same way.
 4. Reply with text and the take; the customer sees it in their Support tab.
+5. If the customer talked to Sam, the ticket shows the AI support agent call transcript (speaker
+   labeled, typed lines marked) above the reply box.
 
 ## How the motion is generated
 
@@ -95,5 +118,7 @@ are in `docs/providers/reactor-x2.md` section 9. Nothing on screen is a stock cl
   vacuum body appearing behind the moved one, and the critic flags those as needs_revision, which
   blocks accept. Record another take, or answer with a text reply.
 - A small dark sliver of the side brush can stay on the rug behind the moved vacuum.
+- The avatar call: a ticket's first call waits about 50 s while Reactor builds the avatar from the
+  portrait (later calls reuse it). Typed messages were verified live; the microphone path was not.
 - Generated clips illustrate what the customer describes. They do not diagnose a fault. Demo
   Support is hosted inside SymptomSketch; no manufacturer is contacted.
