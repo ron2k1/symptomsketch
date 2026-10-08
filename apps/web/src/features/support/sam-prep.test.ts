@@ -129,6 +129,23 @@ describe("SamPrep", () => {
     expect(log.filter((l) => l.startsWith("brief"))).toHaveLength(1);
   });
 
+  it("a call on another ticket also stops a running prep, which may restart later", async () => {
+    const gate = deferred<{ avatarId: string; avatarMs: number }>();
+    const { prep, log, signals } = harness({ build: () => gate.promise });
+    prep.start("t1");
+    await flush();
+    prep.stop("t2");
+    expect(signals[0]?.aborted).toBe(true);
+    expect(prep.current.phase).toBe("stopped");
+    gate.resolve({ avatarId: "av_late", avatarMs: 1 });
+    await flush();
+    prep.start("t2");
+    expect(log.filter((l) => l.startsWith("brief"))).toEqual(["brief:t1"]);
+    prep.start("t1");
+    await flush();
+    expect(log.filter((l) => l.startsWith("brief"))).toEqual(["brief:t1", "brief:t1"]);
+  });
+
   it("rebuilds once when the composite lands after a base-portrait build", async () => {
     const { prep, log } = harness({ portraits: ["base", "base", "composite"] });
     prep.start("t1");

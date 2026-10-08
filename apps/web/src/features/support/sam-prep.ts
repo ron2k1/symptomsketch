@@ -111,10 +111,13 @@ export class SamPrep {
     });
   }
 
-  /** A real call is starting on this ticket: stop prep (its session disconnects) for good. */
+  /**
+   * A real call is starting on this ticket: stop any running prep (its session disconnects, even
+   * one for another ticket, so a call and a prep session never overlap) and never restart this
+   * ticket's prep.
+   */
   stop(ticketId: string): void {
     this.stoppedTickets.add(ticketId);
-    if (this.view.ticketId !== ticketId) return;
     if (this.abort) {
       this.abort.abort();
       this.abort = null;
