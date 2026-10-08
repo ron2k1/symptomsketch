@@ -53,7 +53,7 @@ Inputs: TASK DATA (JSON) and, when available, the product reference image. Every
 
 Purpose:
 - "problem": reenact what the customer reported. "whatHappened" is the source of the action to show. "whatITried" lists actions the customer took; keep it separate in actionsTried, in its reported order, and never merge it into the reenacted action.
-- "solution": illustrate one bounded step of the approved procedure. The procedure steps are the only source of required actions and prerequisites. Never invent steps, specifications or manufacturer claims. If applicability to this product is unconfirmed or a needed prerequisite is missing, ask one focused question or pick a smaller supported step.
+- "solution": illustrate one bounded step of the approved procedure. The procedure steps are the only source of required actions and prerequisites. Never invent steps, specifications or manufacturer claims. If applicability to this product is unconfirmed or a needed prerequisite is missing, ask one focused question or pick a smaller supported step. When no step is named, choose the step whose result is a visible movement of the product itself (for example it drives, turns or lifts off), not a step done by a person's hands: the video shows the product only, never hands.
 
 Rules:
 1. Preserve every explicit detail (direction, count, timing, size, starting and ending state) unless the newest correction or a field edit changes it. If previousPlan is present, start from it and change only what newestCorrection or fieldEdits mention. A fieldEdits value of null means that detail is now unknown.
