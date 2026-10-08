@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CallProvider } from "./call/CallProvider";
 import { SupportCall } from "./SupportCall";
 import { bodiesOf, mockApi } from "./test-fixtures";
 
@@ -12,6 +13,9 @@ vi.mock("./support-call-controller", async (importOriginal) => {
       private readonly onView: (view: import("./support-call-controller").CallView) => void,
       private readonly onEnded?: (ended: import("./support-call-controller").CallEnded) => void,
     ) {}
+    get busy() {
+      return false;
+    }
     async start() {
       this.onView({ ...real.INITIAL_CALL_VIEW, phase: "ended", elapsedSeconds: 31 });
       this.onEnded?.({
@@ -42,7 +46,11 @@ describe("SupportCall", () => {
       }),
     });
     const onEnded = vi.fn();
-    render(<SupportCall ticketId="tkt_1" onEnded={onEnded} />);
+    render(
+      <CallProvider>
+        <SupportCall ticketId="tkt_1" onEnded={onEnded} />
+      </CallProvider>,
+    );
     expect(screen.getByText("Reactor Vidu S2 Avatar").className).toContain("font-reactor");
     fireEvent.click(screen.getByRole("button", { name: /Talk to support now/ }));
 
@@ -70,7 +78,11 @@ describe("SupportCall", () => {
         body: { code: "INTERNAL_ERROR", message: "x" },
       }),
     });
-    render(<SupportCall ticketId="tkt_1" />);
+    render(
+      <CallProvider>
+        <SupportCall ticketId="tkt_1" />
+      </CallProvider>,
+    );
     fireEvent.click(screen.getByRole("button", { name: /Talk to support now/ }));
     expect(
       await screen.findByText("The call transcript could not be added to your ticket."),

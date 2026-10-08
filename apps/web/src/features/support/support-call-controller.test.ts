@@ -134,7 +134,7 @@ describe("SupportCallController avatar reuse", () => {
       brief({ avatarId: "av_base", avatarPortraitSource: "base" }),
     );
     const { controller, view } = setup();
-    await controller.start("tkt_1", () => null);
+    await controller.start("tkt_1");
     expect(view().phase).toBe("live");
     const model = sdk.FakeModel.instances[0]!;
     expect(model.calls).not.toContain("attach_avatar:av_base");
@@ -151,7 +151,7 @@ describe("SupportCallController avatar reuse", () => {
       brief({ avatarId: "av_comp", avatarPortraitSource: "composite" }),
     );
     const { controller, view } = setup();
-    await controller.start("tkt_1", () => null);
+    await controller.start("tkt_1");
     expect(view().phase).toBe("live");
     const model = sdk.FakeModel.instances[0]!;
     expect(model.calls).toContain("attach_avatar:av_comp");
@@ -170,7 +170,7 @@ function deferred<T>() {
 }
 
 async function liveCall(controller: InstanceType<typeof SupportCallController>) {
-  await controller.start("tkt_1", () => null);
+  await controller.start("tkt_1");
   const model = sdk.FakeModel.instances.at(-1)!;
   model.emit("transcript", { speaker: "character", text: "Hi, I'm Sam.", final: true });
   return model;
@@ -208,7 +208,7 @@ describe("SupportCallController end of call", () => {
     first.endCallResult = endCall.promise;
     const ending = controller.end();
 
-    await controller.start("tkt_1", () => null);
+    await controller.start("tkt_1");
     const second = sdk.FakeModel.instances.at(-1)!;
     expect(second).not.toBe(first);
     expect(view().phase).toBe("live");
@@ -231,12 +231,12 @@ describe("SupportCallController end of call", () => {
     const token = deferred<{ jwt: string }>();
     api.createSupportCallToken.mockReturnValueOnce(token.promise);
     const { controller, view } = setup();
-    const stale = controller.start("tkt_1", () => null);
+    const stale = controller.start("tkt_1");
     await vi.waitFor(() => expect(api.createSupportCallToken).toHaveBeenCalledTimes(1));
     await controller.end();
     expect(view().phase).toBe("ended");
 
-    await controller.start("tkt_1", () => null);
+    await controller.start("tkt_1");
     expect(view().phase).toBe("live");
     token.resolve({ jwt: "late.jwt" });
     await stale;
@@ -265,7 +265,7 @@ describe("SupportCallController call cap", () => {
       maxSessionDurationSeconds: 200,
     });
     const { controller, view } = setup();
-    await controller.start("tkt_1", () => null);
+    await controller.start("tkt_1");
     expect(view().phase).toBe("live");
     expect(view().capSeconds).toBeLessThanOrEqual(190);
     expect(view().capSeconds).toBeGreaterThanOrEqual(189);
@@ -276,7 +276,7 @@ describe("SupportCallController call cap", () => {
 
   it("keeps the four-minute cap when the session has room for it", async () => {
     const { controller, view } = setup();
-    await controller.start("tkt_1", () => null);
+    await controller.start("tkt_1");
     expect(view().capSeconds).toBe(240);
     await controller.end();
   });

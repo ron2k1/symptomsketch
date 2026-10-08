@@ -1,6 +1,7 @@
 import {
   LIMITS,
   type SupportCallPhase,
+  type SupportCallPortraitSource,
   type SupportCallSpeaker,
   type SupportCallTranscriptLine,
 } from "@symptomsketch/contracts";
@@ -122,4 +123,52 @@ export function callCapSeconds(callMaxSeconds: number | null): number {
 export function formatClock(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+export interface CallView {
+  phase: SupportCallPhase;
+  /** Plain sub-step under the phase label, e.g. "Building the avatar". */
+  detail: string | null;
+  error: string | null;
+  transcript: TranscriptState;
+  elapsedSeconds: number;
+  capSeconds: number;
+  micOn: boolean;
+  micNotice: string | null;
+  /** Object URL of the portrait this call uses (shown until video arrives). */
+  portraitUrl: string | null;
+  /** Which portrait Sam was built from this call: the composite, or Sam's standard portrait. */
+  portraitSource: SupportCallPortraitSource | null;
+  hasVideo: boolean;
+  /** Sam's live output (main_video + main_audio) while the call runs; null otherwise. */
+  media: MediaStream | null;
+  /** Epoch ms when the call went live (the real call start), null before. */
+  liveAt: number | null;
+  /** Measured create_avatar time (upload excluded), null when an avatar was re-attached. */
+  avatarMs: number | null;
+  endReason: string | null;
+}
+
+export const INITIAL_CALL_VIEW: CallView = {
+  phase: "idle",
+  detail: null,
+  error: null,
+  transcript: EMPTY_TRANSCRIPT,
+  elapsedSeconds: 0,
+  capSeconds: callCapSeconds(null),
+  micOn: false,
+  micNotice: null,
+  portraitUrl: null,
+  portraitSource: null,
+  hasVideo: false,
+  media: null,
+  liveAt: null,
+  avatarMs: null,
+  endReason: null,
+};
+
+export interface CallEnded {
+  lines: SupportCallTranscriptLine[];
+  durationSeconds: number;
+  endReason: string | null;
 }

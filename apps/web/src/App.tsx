@@ -5,6 +5,8 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useDocumentTitle } from "@/lib/document-title";
 import { LandingPage } from "@/features/landing/LandingPage";
+import { CallDock } from "@/features/support/call/CallDock";
+import { CallProvider } from "@/features/support/call/CallProvider";
 
 // Heavy routes load on demand so the landing chunk stays small. The case workspace pulls in the
 // Reactor X2 SDK; its wasm loader is emitted next to the chunks in dist/assets (vite.config.ts).
@@ -43,16 +45,20 @@ export function App() {
   return (
     <BrowserRouter>
       <TooltipProvider delayDuration={300}>
-        <Suspense fallback={<RouteLoading />}>
-          <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/cases/:caseId" element={<Navigate to="issue" replace />} />
-            <Route path="/cases/:caseId/:tab" element={<CaseWorkspace />} />
-            <Route path="/support" element={<SupportInboxPage />} />
-            <Route path="/support/tickets/:ticketId" element={<SupportTicketPage />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Suspense>
+        {/* The live support call sits above the pages so it survives route changes. */}
+        <CallProvider>
+          <Suspense fallback={<RouteLoading />}>
+            <Routes>
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/cases/:caseId" element={<Navigate to="issue" replace />} />
+              <Route path="/cases/:caseId/:tab" element={<CaseWorkspace />} />
+              <Route path="/support" element={<SupportInboxPage />} />
+              <Route path="/support/tickets/:ticketId" element={<SupportTicketPage />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
+          <CallDock />
+        </CallProvider>
         <Toaster theme="dark" position="bottom-right" />
       </TooltipProvider>
     </BrowserRouter>
