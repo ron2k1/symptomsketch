@@ -173,7 +173,7 @@ export function CustomerSupportTab(props: CustomerSupportTabProps) {
         {resolution.kind === "none" ? (
           <RecreatePrompt
             caseId={caseId}
-            text="No accepted take yet. Record a take in Recreate and choose Matches my description to attach it here."
+            text="No accepted take yet. Clip a take in Recreate and choose Matches my description to attach it here."
           />
         ) : null}
       </section>

@@ -128,7 +128,7 @@ export function ConversationPanel({
 
   let disabledReason: string | null = null;
   if (!plan) disabledReason = "Start from the Issue tab to create the first plan.";
-  else if (captureBusy) disabledReason = "Corrections are paused until the recording ends.";
+  else if (captureBusy) disabledReason = "Corrections are paused until the clip is saved.";
   else if (state.planning) disabledReason = "Updating the movement.";
 
   function onSelectField(field: HighlightField) {

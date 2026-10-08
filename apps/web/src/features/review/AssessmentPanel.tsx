@@ -224,7 +224,7 @@ export function AssessmentPanel({
             Try suggested correction
           </Button>
           <p className="text-[12px] text-muted-foreground">
-            Updates the preview description. Your original requirements stay; record a new take
+            Updates the preview description. Your original requirements stay; clip a new take
             afterwards.
           </p>
         </div>
