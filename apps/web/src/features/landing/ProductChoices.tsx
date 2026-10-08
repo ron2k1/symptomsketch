@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import { ArrowRight, ImageUp, LoaderCircle, RotateCcw, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { HeroProduct, SmoothScrollHeroProps } from "@/components/ui/hero-types";
+import { SandHighlight } from "@/components/SandHighlight";
 import { cn } from "@/lib/utils";
 
 export interface ProductChoicesProps extends SmoothScrollHeroProps {
@@ -24,9 +25,8 @@ export function ProductChoices(props: ProductChoicesProps) {
       id={props.sectionId}
       ref={props.sectionRef}
       aria-labelledby={`${props.sectionId}-heading`}
-      className="relative mx-auto max-w-5xl scroll-mt-20 px-4 py-16 sm:px-6 md:py-24"
+      className="relative mx-auto max-w-5xl scroll-mt-24 px-4 py-16 sm:px-6 md:py-20"
     >
-      <p className="hud-label mb-3 text-neon">// Choose your product</p>
       <motion.h2
         id={`${props.sectionId}-heading`}
         ref={props.headingRef}
@@ -35,12 +35,14 @@ export function ProductChoices(props: ProductChoicesProps) {
         whileInView={animate ? { y: 0, opacity: 1 } : undefined}
         viewport={{ once: true, amount: 0.6 }}
         transition={{ ease: "easeInOut", duration: 0.6 }}
-        className="text-3xl font-semibold tracking-tight outline-none sm:text-4xl"
+        className="text-center text-[clamp(2rem,4.6vw,3.25rem)] leading-tight font-extrabold tracking-[-0.035em] outline-none"
       >
-        {props.productsHeading}
+        <SandHighlight text={props.productsHeading} highlight={props.productsHeadingHighlight} />
       </motion.h2>
       {props.productsIntro && (
-        <p className="mt-3 max-w-2xl text-muted-foreground">{props.productsIntro}</p>
+        <p className="mx-auto mt-4 max-w-2xl text-center text-muted-foreground">
+          {props.productsIntro}
+        </p>
       )}
 
       {productsStatus === "error" && (
@@ -61,14 +63,15 @@ export function ProductChoices(props: ProductChoicesProps) {
         </div>
       )}
 
-      <ul className="mt-10 flex flex-col gap-4" aria-busy={productsStatus === "loading"}>
+      <ul
+        className="mt-10 flex flex-col divide-y divide-border border-y border-border"
+        aria-busy={productsStatus === "loading"}
+      >
         {productsStatus === "loading" &&
           [0, 1, 2].map((i) => (
-            <li
-              key={`skeleton-${i}`}
-              aria-hidden
-              className="h-[104px] animate-pulse rounded-xl border border-border bg-surface/70"
-            />
+            <li key={`skeleton-${i}`} aria-hidden className="py-4">
+              <span className="block h-[104px] animate-pulse rounded-xl bg-muted" />
+            </li>
           ))}
         {products.map((product, index) => (
           <ProductChoiceRow
@@ -112,7 +115,6 @@ function ProductChoiceRow(props: ProductChoiceRowProps) {
   const { product, pending, error } = props;
   const errorId = useId();
   const isPhoto = product.entry.kind === "photo";
-  const label = isPhoto ? "Your own" : `Product ${String(props.index + 1).padStart(2, "0")}`;
   return (
     <motion.li
       initial={props.animate ? { y: 40, opacity: 0 } : false}
@@ -127,11 +129,10 @@ function ProductChoiceRow(props: ProductChoiceRowProps) {
         aria-busy={pending}
         aria-describedby={error ? errorId : undefined}
         className={cn(
-          "group grid min-h-[44px] w-full grid-cols-[64px_1fr] items-center gap-x-4 gap-y-3 rounded-xl border bg-surface/80 p-3 text-left transition-[border-color,background-color,box-shadow] sm:grid-cols-[88px_1fr_auto] sm:p-4",
-          "hover:border-primary/70 hover:bg-surface-2 hover:shadow-[var(--glow)] disabled:cursor-not-allowed",
-          error ? "border-destructive/70" : "border-border",
+          "group grid min-h-[44px] w-full grid-cols-[96px_1fr] items-center gap-x-5 gap-y-3 rounded-2xl px-2 py-4 text-left transition-colors sm:grid-cols-[200px_1fr_auto] sm:px-3",
+          "hover:bg-surface/80 disabled:cursor-not-allowed",
+          error && "ring-1 ring-destructive/60",
           props.disabled && !pending && "opacity-60",
-          isPhoto && "border-dashed",
         )}
       >
         {product.image ? (
@@ -142,33 +143,31 @@ function ProductChoiceRow(props: ProductChoiceRowProps) {
             height={product.image.height}
             loading="lazy"
             decoding="async"
-            className="size-16 rounded-lg border border-border object-cover sm:size-[88px]"
+            className="aspect-[2/1] w-full rounded-xl object-cover shadow-[var(--glow)]"
           />
         ) : (
-          <span className="grid size-16 place-items-center rounded-lg border border-dashed border-magenta/60 bg-magenta-soft sm:size-[88px]">
-            <ImageUp aria-hidden className="size-7 text-magenta" />
+          <span className="grid aspect-[2/1] w-full place-items-center rounded-xl bg-muted">
+            <ImageUp aria-hidden className="size-9 text-muted-foreground" />
           </span>
         )}
         <span className="flex min-w-0 flex-col gap-1">
-          <span className="hud-label flex flex-wrap items-center gap-2">
-            <span className={isPhoto ? "text-magenta" : "text-neon"}>{label}</span>
-            <span aria-hidden>·</span>
+          <span className="flex flex-wrap items-center gap-2 text-xs font-medium text-muted-foreground">
             <span>{product.category}</span>
             {props.featured && (
-              <span className="rounded-sm border border-magenta/60 px-1.5 text-[10px] text-magenta">
+              <span className="rounded-full bg-sand-soft px-2 py-0.5 text-[11px] text-foreground">
                 Recommended
               </span>
             )}
           </span>
-          <span className="text-lg font-semibold sm:text-xl">{product.name}</span>
-          <span className="text-sm text-muted-foreground">{product.description}</span>
+          <span className="text-xl font-bold tracking-tight sm:text-2xl">{product.name}</span>
+          <span className="text-sm text-muted-foreground sm:text-base">{product.description}</span>
         </span>
         <span
           className={cn(
-            "col-span-2 inline-flex items-center justify-self-end gap-2 rounded-md border px-3 py-2 font-mono text-sm sm:col-span-1",
+            "col-span-2 inline-flex items-center justify-self-end gap-2 rounded-lg px-5 py-3 text-[15px] font-medium transition-colors sm:col-span-1",
             isPhoto
-              ? "border-magenta/60 text-magenta"
-              : "border-primary/60 text-neon group-hover:bg-primary group-hover:text-primary-foreground",
+              ? "border border-foreground/25 bg-surface text-foreground group-hover:border-foreground/50"
+              : "bg-primary text-primary-foreground group-hover:bg-primary/90",
           )}
         >
           {pending ? (

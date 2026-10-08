@@ -32,17 +32,15 @@ export type ProductSelectionState =
 export interface SmoothScrollHeroProps {
   tagline: string;
   title: string;
-  /** Word inside `title` that gets the neon underline. */
+  /** Word inside `title` that gets the sand underline. */
   titleHighlight?: string;
   description: string;
   primaryActionLabel: string;
-  /** Decorative expanding stage image (motion layout only). */
-  heroImage: HeroImage;
-  /** Decorative parallax cards (motion layout only). */
-  parallaxImages: readonly HeroImage[];
-  /** Parent-owned illustration shown beside the copy (e.g. the Example workspace). */
+  /** Parent-owned illustration shown under the copy (e.g. the Example workspace). */
   aside?: ReactNode;
   productsHeading: string;
+  /** Word inside `productsHeading` that gets the sand underline. */
+  productsHeadingHighlight?: string;
   productsIntro?: string;
   products: readonly HeroProduct[];
   productsStatus?: "loading" | "ready" | "error";

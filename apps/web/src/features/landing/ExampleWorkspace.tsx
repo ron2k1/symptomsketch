@@ -1,84 +1,97 @@
-import { Clapperboard, MessageSquareText, Package, Play } from "lucide-react";
+import { Play } from "lucide-react";
 import type { ReactNode } from "react";
+import { cn } from "@/lib/utils";
 import { EXAMPLE_WORKSPACE } from "./landing-content";
 
 /**
- * Static landing illustration (spec 6): a framed product scene labeled Example workspace with
- * three decorative cards. Nothing here is live; no provider session starts from this view.
+ * Static landing illustration (spec 6), laid out like the concept mockup: the product scene in the
+ * sand frame with three cards floating over its edges (stacked under it on narrow screens).
+ * Nothing here is live; no provider session starts from this view.
  */
 export function ExampleWorkspace() {
   const { image, productName, whatHappened, clipDuration } = EXAMPLE_WORKSPACE;
   return (
-    <figure className="holo-tray relative flex flex-col gap-3 p-3 sm:p-4">
-      <figcaption className="flex items-center justify-between gap-3">
-        <span className="hud-label text-neon">Example workspace</span>
-        <span className="hud-label rounded-sm border border-border px-2 py-0.5 text-[10px]">
-          Illustration · not live
-        </span>
-      </figcaption>
-      <div className="relative overflow-hidden rounded-xl border border-border">
-        <img
-          src={image.src}
-          alt={image.alt}
-          width={image.width}
-          height={image.height}
-          fetchPriority="high"
-          decoding="async"
-          className="aspect-[16/10] h-auto w-full object-cover"
-        />
-        <div aria-hidden className="scanlines pointer-events-none absolute inset-0" />
+    <figure className="relative mx-auto w-full max-w-4xl md:px-10 md:pb-10">
+      <div className="holo-tray p-3 sm:p-6">
+        <div className="relative overflow-hidden rounded-[18px]">
+          <img
+            src={image.src}
+            alt={image.alt}
+            width={image.width}
+            height={image.height}
+            fetchPriority="high"
+            decoding="async"
+            className="aspect-[16/9] h-auto w-full object-cover object-[50%_85%]"
+          />
+          <figcaption className="absolute top-3 right-3 rounded-full bg-surface/90 px-3 py-1 text-xs font-medium shadow-[var(--glow)] backdrop-blur">
+            Example workspace · not live
+          </figcaption>
+        </div>
       </div>
-      <div className="grid gap-2 sm:grid-cols-3">
-        <ExampleCard
-          icon={<Package aria-hidden className="size-4 text-neon" />}
-          label="Your product"
-        >
-          {productName}
-        </ExampleCard>
-        <ExampleCard
-          icon={<MessageSquareText aria-hidden className="size-4 text-neon" />}
-          label="What happened"
-        >
-          {whatHappened.before}
-          <mark className="hl-established">{whatHappened.marks[0]}</mark>{" "}
-          <mark className="hl-established">{whatHappened.marks[1]}</mark>
-          {whatHappened.after}
-        </ExampleCard>
-        <ExampleCard
-          icon={<Clapperboard aria-hidden className="size-4 text-magenta" />}
-          label="A clip you can share"
-        >
-          <span className="flex items-center gap-2">
-            <span className="grid size-6 place-items-center rounded-full border border-magenta/60">
-              <Play aria-hidden className="size-3 text-magenta" />
-            </span>
-            <span aria-hidden className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
-              <span className="block h-full w-2/5 bg-magenta" />
-            </span>
-            <span className="font-mono text-xs text-muted-foreground">{clipDuration}</span>
+      <div className="mt-4 grid gap-3 sm:grid-cols-3 md:contents">
+        <FloatCard label="Your product" className="md:absolute md:top-[18%] md:left-0 md:w-48">
+          <img
+            src={image.src}
+            alt=""
+            width={image.width}
+            height={image.height}
+            decoding="async"
+            className="mb-2 aspect-[4/3] w-full rounded-lg object-cover"
+          />
+          <span className="text-sm">{productName}</span>
+        </FloatCard>
+        <FloatCard label="What happened" className="md:absolute md:top-[46%] md:right-0 md:w-56">
+          <span className="block rounded-lg border border-border px-2.5 py-2 text-sm leading-relaxed">
+            {whatHappened.before}
+            <mark className="hl-established">{whatHappened.marks[0]}</mark>{" "}
+            <mark className="hl-established">{whatHappened.marks[1]}</mark>
+            {whatHappened.after}
           </span>
-        </ExampleCard>
+        </FloatCard>
+        <FloatCard
+          label="A clip you can share"
+          className="md:absolute md:bottom-0 md:left-1/2 md:w-64 md:-translate-x-1/2"
+        >
+          <span className="relative block overflow-hidden rounded-lg">
+            <img
+              src={image.src}
+              alt=""
+              width={image.width}
+              height={image.height}
+              decoding="async"
+              className="aspect-[5/2] w-full object-cover"
+            />
+            <span className="absolute top-1/2 left-3 grid size-8 -translate-y-1/2 place-items-center rounded-full bg-surface shadow-[var(--glow)]">
+              <Play aria-hidden className="size-3.5 fill-foreground text-foreground" />
+            </span>
+            <span className="absolute right-2 bottom-2 rounded-md bg-foreground/70 px-1.5 py-0.5 text-[11px] font-medium text-background">
+              {clipDuration}
+            </span>
+          </span>
+        </FloatCard>
       </div>
     </figure>
   );
 }
 
-function ExampleCard({
-  icon,
+function FloatCard({
   label,
+  className,
   children,
 }: {
-  icon: ReactNode;
   label: string;
+  className?: string;
   children: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-surface-2/80 p-3">
-      <span className="hud-label flex items-center gap-1.5 text-[11px]">
-        {icon}
-        {label}
-      </span>
-      <span className="text-sm leading-snug">{children}</span>
+    <div
+      className={cn(
+        "flex flex-col gap-2 rounded-2xl bg-surface p-4 shadow-[0_14px_36px_rgb(28_32_30/0.13)]",
+        className,
+      )}
+    >
+      <span className="text-[15px] font-bold">{label}</span>
+      {children}
     </div>
   );
 }

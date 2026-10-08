@@ -17,8 +17,6 @@ import { usePhotoIntake } from "@/features/intake/usePhotoIntake";
 import { ExampleWorkspace } from "./ExampleWorkspace";
 import {
   FEATURED_PRODUCT_ID,
-  HERO_PARALLAX_IMAGES,
-  HERO_STAGE_IMAGE,
   LANDING_COPY,
   UPLOAD_PRODUCT_ID,
   UPLOAD_PRODUCT_ROW,
@@ -27,7 +25,7 @@ import {
 import { useCatalog } from "./useCatalog";
 
 /**
- * Route "/": cyber landing built on the adapted SmoothScrollHero (spec 6, 25).
+ * Route "/": landing built on the adapted SmoothScrollHero (spec 6, 25), styled after the concept.
  * Owns the catalog fetch, product selection, the access-code gate and case creation.
  * Nothing here calls Gemini or Reactor; selecting a product only creates the owned case.
  */
@@ -116,10 +114,9 @@ export function LandingPage() {
         titleHighlight={LANDING_COPY.titleHighlight}
         description={LANDING_COPY.description}
         primaryActionLabel={LANDING_COPY.primaryAction}
-        heroImage={HERO_STAGE_IMAGE}
-        parallaxImages={HERO_PARALLAX_IMAGES}
         aside={<ExampleWorkspace />}
         productsHeading={LANDING_COPY.productsHeading}
+        productsHeadingHighlight={LANDING_COPY.productsHeadingHighlight}
         productsIntro={LANDING_COPY.productsIntro}
         products={heroProducts}
         productsStatus={catalog.status}

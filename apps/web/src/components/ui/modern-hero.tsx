@@ -1,8 +1,9 @@
 /**
- * SmoothScrollHero adapted from reference/modern-hero.original.tsx (spec 6 + 25).
+ * SmoothScrollHero adapted from reference/modern-hero.original.tsx (spec 6 + 25), laid out like the
+ * concept mockup: a centered headline over the framed Example workspace, then the product rows.
  * Data-free: the parent route owns catalog rows, selection state, case creation and navigation.
- * Motion (Lenis + sticky expanding stage + parallax) runs only on wide, tall viewports without
- * reduced motion; everything else gets a static composition with the same content and actions.
+ * Motion (Lenis smooth scroll + reveal-on-scroll) runs only on wide, tall viewports without
+ * reduced motion; everything else gets the same composition without it.
  */
 import {
   useCallback,
@@ -14,18 +15,14 @@ import {
 } from "react";
 import { ReactLenis, useLenis } from "lenis/react";
 import "lenis/dist/lenis.css";
-import {
-  motion,
-  useMotionTemplate,
-  useReducedMotion,
-  useScroll,
-  useTransform,
-} from "framer-motion";
-import { ArrowDown, ArrowRight, Headset, ScanLine } from "lucide-react";
+import { motion, useReducedMotion } from "framer-motion";
+import { ArrowRight, ChevronDown, Headset } from "lucide-react";
+import { BrandLogo } from "@/components/BrandLogo";
+import { SandHighlight } from "@/components/SandHighlight";
 import { Button } from "@/components/ui/button";
 import { ProductChoices } from "@/features/landing/ProductChoices";
 import { cn } from "@/lib/utils";
-import type { HeroImage, SmoothScrollHeroProps } from "./hero-types";
+import type { SmoothScrollHeroProps } from "./hero-types";
 
 export type {
   HeroImage,
@@ -36,7 +33,7 @@ export type {
   SmoothScrollHeroProps,
 } from "./hero-types";
 
-const NAV_HEIGHT = 64;
+const NAV_HEIGHT = 72;
 const MOTION_QUERY = "(min-width: 1024px) and (min-height: 600px)";
 const LENIS_OPTIONS = { autoRaf: true, lerp: 0.12 } as const;
 let mountedLenisRoots = 0;
@@ -61,11 +58,6 @@ function useLenisRootCleanup(active: boolean) {
     };
   }, [active]);
 }
-const PARALLAX_LAYOUT = [
-  { className: "w-[30%]", start: 80, end: -80 },
-  { className: "mx-auto -mt-16 w-[46%]", start: 120, end: -140 },
-  { className: "ml-auto -mt-40 w-[24%]", start: 60, end: -120 },
-] as const;
 
 function useMediaQuery(query: string): boolean {
   const subscribe = useCallback(
@@ -116,11 +108,7 @@ export function SmoothScrollHero(props: SmoothScrollHeroProps) {
         Skip to products
       </a>
       <Nav {...props} onChooseProduct={scrollToProducts} />
-      {motionEnabled ? (
-        <MotionHero {...props} onChooseProduct={scrollToProducts} />
-      ) : (
-        <StaticHero {...props} onChooseProduct={scrollToProducts} />
-      )}
+      <Hero {...props} onChooseProduct={scrollToProducts} animate={motionEnabled} />
       <ProductChoices
         {...props}
         sectionId={productsId}
@@ -151,28 +139,23 @@ function Nav({
   return (
     <nav
       aria-label="Main"
-      className="fixed inset-x-0 top-0 z-50 border-b border-border/70 bg-background/85 backdrop-blur-md"
+      className="fixed inset-x-0 top-0 z-50 border-b border-border/70 bg-surface/90 shadow-[var(--glow)] backdrop-blur-md"
       style={{ height: NAV_HEIGHT }}
     >
       <div className="mx-auto flex h-full max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
-        <span className="flex items-center gap-2 font-mono text-[15px] font-semibold tracking-tight">
-          <ScanLine aria-hidden className="size-5 text-neon" />
-          <span>
-            Symptom<span className="text-magenta">Sketch</span>
-          </span>
-        </span>
-        <div className="flex items-center gap-1 sm:gap-2">
+        <BrandLogo />
+        <div className="flex items-center gap-1 sm:gap-3">
+          <Button size="sm" onClick={onChooseProduct} className="h-10 rounded-lg px-4">
+            <span className="hidden sm:inline">{primaryActionLabel}</span>
+            <span className="sm:hidden">Products</span>
+            <ChevronDown aria-hidden />
+          </Button>
           <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
             <a href={supportHref} onClick={onSupportClick}>
-              <Headset aria-hidden />
+              <Headset aria-hidden className="sm:hidden" />
               <span className="hidden sm:inline">{supportLabel ?? "Support workspace"}</span>
               <span className="sm:hidden">Support</span>
             </a>
-          </Button>
-          <Button size="sm" onClick={onChooseProduct} className="font-mono">
-            <span className="hidden sm:inline">{primaryActionLabel}</span>
-            <span className="sm:hidden">Products</span>
-            <ArrowRight aria-hidden />
           </Button>
         </div>
       </div>
@@ -188,141 +171,50 @@ function HeroCopy({
   primaryActionLabel,
   onChooseProduct,
 }: WithChoose) {
-  const at = titleHighlight ? title.indexOf(titleHighlight) : -1;
   return (
-    <div className="flex flex-col gap-5">
-      <p className="hud-label text-neon">// SymptomSketch · visual support</p>
-      <p className="font-mono text-[clamp(2.1rem,5vw,4.6rem)] leading-[0.95] font-semibold tracking-tight uppercase">
+    <div className="flex max-w-4xl flex-col items-center gap-5 text-center">
+      <p className="rounded-full border border-border bg-surface px-3.5 py-1 text-[13px] font-medium text-muted-foreground">
         {tagline}
       </p>
-      <h1 className="text-[clamp(1.6rem,2.6vw,2.4rem)] leading-tight font-semibold">
-        {at < 0 || !titleHighlight ? (
-          title
-        ) : (
-          <>
-            {title.slice(0, at)}
-            <span className="relative inline-block text-neon after:absolute after:inset-x-0 after:-bottom-1 after:h-[3px] after:rounded-full after:bg-neon after:shadow-[var(--glow)]">
-              {titleHighlight}
-            </span>
-            {title.slice(at + titleHighlight.length)}
-          </>
-        )}
+      <h1 className="text-[clamp(2.5rem,5.6vw,4.5rem)] leading-[1.04] font-extrabold tracking-[-0.04em]">
+        <SandHighlight text={title} highlight={titleHighlight} />
       </h1>
-      <p className="max-w-xl text-lg text-muted-foreground">{description}</p>
-      <div className="flex flex-wrap items-center gap-3 pt-1">
-        <Button size="lg" onClick={onChooseProduct} className="h-11 font-mono shadow-[var(--glow)]">
+      <p className="text-[clamp(1.1rem,1.9vw,1.45rem)] text-muted-foreground">{description}</p>
+      <div className="flex flex-col items-center gap-3 pt-2">
+        <Button
+          size="lg"
+          onClick={onChooseProduct}
+          className="h-12 rounded-lg px-8 text-base shadow-[var(--glow)]"
+        >
           {primaryActionLabel}
-          <ArrowDown aria-hidden />
+          <ArrowRight aria-hidden />
         </Button>
-        <span className="hud-label">No AI runs on this page</span>
+        <span className="text-xs text-muted-foreground">No AI runs on this page</span>
       </div>
     </div>
   );
 }
 
-function StaticHero(props: WithChoose) {
+function Hero(props: WithChoose & { animate: boolean }) {
   return (
     <section
       aria-label="Introduction"
-      className="cyber-grid relative px-4 pb-10 sm:px-6"
-      style={{ paddingTop: NAV_HEIGHT + 32 }}
+      className="relative px-4 pb-12 sm:px-6"
+      style={{ paddingTop: NAV_HEIGHT + 48 }}
     >
-      <div className="mx-auto grid max-w-6xl items-center gap-10 lg:grid-cols-[1.05fr_0.95fr]">
+      <div className="mx-auto flex max-w-5xl flex-col items-center gap-12">
         <HeroCopy {...props} />
-        {props.aside}
+        {props.aside && (
+          <motion.div
+            className="w-full"
+            initial={props.animate ? { opacity: 0, y: 28, scale: 0.98 } : false}
+            animate={props.animate ? { opacity: 1, y: 0, scale: 1 } : undefined}
+            transition={{ ease: "easeOut", duration: 0.7, delay: 0.1 }}
+          >
+            {props.aside}
+          </motion.div>
+        )}
       </div>
     </section>
-  );
-}
-
-function MotionHero(props: WithChoose) {
-  const heroRef = useRef<HTMLElement>(null);
-  const { scrollYProgress } = useScroll({ target: heroRef, offset: ["start start", "end end"] });
-  const copyOpacity = useTransform(scrollYProgress, [0, 0.2], [1, 0]);
-  const copyY = useTransform(scrollYProgress, [0, 0.2], [0, -48]);
-  const clipA = useTransform(scrollYProgress, [0.04, 0.5], [50, 0]);
-  const clipB = useTransform(scrollYProgress, [0.04, 0.5], [50, 100]);
-  const clipPath = useMotionTemplate`polygon(${clipA}% ${clipA}%, ${clipB}% ${clipA}%, ${clipB}% ${clipB}%, ${clipA}% ${clipB}%)`;
-  const imageScale = useTransform(scrollYProgress, [0, 0.8], [1.3, 1]);
-  const stageOpacity = useTransform(scrollYProgress, [0.82, 1], [1, 0]);
-
-  return (
-    <section ref={heroRef} aria-label="Introduction" className="relative w-full">
-      <div className="sticky top-0 h-screen overflow-hidden">
-        <div aria-hidden className="cyber-grid absolute inset-0" />
-        <motion.div
-          aria-hidden
-          className="absolute inset-0 overflow-hidden"
-          style={{ clipPath, opacity: stageOpacity }}
-        >
-          <motion.img
-            src={props.heroImage.src}
-            alt=""
-            width={props.heroImage.width}
-            height={props.heroImage.height}
-            decoding="async"
-            className="h-full w-full object-cover"
-            style={{ scale: imageScale }}
-          />
-          <div className="scanlines absolute inset-0 bg-background/35" />
-        </motion.div>
-        <motion.div
-          className="relative z-10 mx-auto grid h-full max-w-6xl grid-cols-[1.05fr_0.95fr] items-center gap-10 px-6"
-          style={{ opacity: copyOpacity, y: copyY, paddingTop: NAV_HEIGHT }}
-        >
-          <HeroCopy {...props} />
-          {props.aside}
-        </motion.div>
-      </div>
-      <ParallaxImages images={props.parallaxImages} />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-64 bg-linear-to-b from-transparent to-background"
-      />
-    </section>
-  );
-}
-
-function ParallaxImages({ images }: { images: readonly HeroImage[] }) {
-  return (
-    <div aria-hidden className="relative z-20 mx-auto max-w-5xl px-6 pt-[40vh] pb-32">
-      {images.slice(0, PARALLAX_LAYOUT.length).map((image, i) => {
-        const layout = PARALLAX_LAYOUT[i];
-        if (!layout) return null;
-        return <ParallaxImg key={image.src} image={image} {...layout} />;
-      })}
-    </div>
-  );
-}
-
-interface ParallaxImgProps {
-  image: HeroImage;
-  start: number;
-  end: number;
-  className?: string;
-}
-
-function ParallaxImg({ image, start, end, className }: ParallaxImgProps) {
-  const ref = useRef<HTMLImageElement>(null);
-  const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "end start"] });
-  const opacity = useTransform(scrollYProgress, [0.75, 1], [1, 0]);
-  const scale = useTransform(scrollYProgress, [0.75, 1], [1, 0.9]);
-  const y = useTransform(scrollYProgress, [0, 1], [start, end]);
-  const transform = useMotionTemplate`translateY(${y}px) scale(${scale})`;
-  return (
-    <motion.img
-      ref={ref}
-      src={image.src}
-      alt=""
-      width={image.width}
-      height={image.height}
-      loading="lazy"
-      decoding="async"
-      className={cn(
-        "block h-auto rounded-2xl border border-border shadow-[var(--glow)]",
-        className,
-      )}
-      style={{ transform, opacity }}
-    />
   );
 }

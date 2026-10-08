@@ -10,12 +10,7 @@ import {
   type ProductSelectionState,
 } from "@/components/ui/modern-hero";
 import { ExampleWorkspace } from "@/features/landing/ExampleWorkspace";
-import {
-  HERO_PARALLAX_IMAGES,
-  HERO_STAGE_IMAGE,
-  LANDING_COPY,
-  UPLOAD_PRODUCT_ROW,
-} from "@/features/landing/landing-content";
+import { LANDING_COPY, UPLOAD_PRODUCT_ROW } from "@/features/landing/landing-content";
 
 export const DEMO_PRODUCTS: readonly HeroProduct[] = [
   {
@@ -44,10 +39,9 @@ export function DemoOne() {
       titleHighlight={LANDING_COPY.titleHighlight}
       description={LANDING_COPY.description}
       primaryActionLabel={LANDING_COPY.primaryAction}
-      heroImage={HERO_STAGE_IMAGE}
-      parallaxImages={HERO_PARALLAX_IMAGES}
       aside={<ExampleWorkspace />}
       productsHeading={LANDING_COPY.productsHeading}
+      productsHeadingHighlight={LANDING_COPY.productsHeadingHighlight}
       productsIntro="Showcase only. These rows are fixtures with no-op handlers."
       products={DEMO_PRODUCTS}
       featuredProductId="robot-vacuum"

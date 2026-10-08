@@ -13,6 +13,7 @@ export const LANDING_COPY = {
   primaryAction: "Choose your product",
   supportLink: "Support workspace",
   productsHeading: "What do you need help with?",
+  productsHeadingHighlight: "help",
   productsIntro:
     "Pick a demo product to walk the full flow, or upload a photo of your own. Nothing is generated until you describe the issue in your case.",
   demoDisclosure: "Demo support is hosted inside SymptomSketch. No manufacturer is contacted.",
@@ -20,20 +21,6 @@ export const LANDING_COPY = {
   processingNote:
     "Your photo and description are sent to Gemini and Reactor only when you ask for a plan or preview.",
 } as const;
-
-export const HERO_STAGE_IMAGE: HeroImage = {
-  src: "/assets/hero-center.jpg",
-  alt: "",
-  width: 1600,
-  height: 1067,
-};
-
-/** Decorative, on-theme parallax cards (home-interior.jpg is off-palette and left out). */
-export const HERO_PARALLAX_IMAGES: readonly HeroImage[] = [
-  { src: "/assets/parallax-fiber.jpg", alt: "", width: 1600, height: 1018 },
-  { src: "/assets/parallax-neon.jpg", alt: "", width: 1600, height: 1067 },
-  { src: "/assets/parallax-lights.jpg", alt: "", width: 1600, height: 2133 },
-];
 
 /** Static illustration content for the Example workspace frame (not a live case). */
 export const EXAMPLE_WORKSPACE = {
