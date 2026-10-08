@@ -1,0 +1,166 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@fontsource-variable/inter";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/600.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * SymptomSketch cyber theme. Every color in the app comes from these tokens.
+ * Layout follows the workspace concept (shelf | stage | conversation); the palette is
+ * the requested cyber treatment. Swap these values to re-theme the whole app.
+ */
+:root {
+  --radius: 12px;
+  --radius-card: 18px;
+  --radius-tray: 24px;
+
+  --background: #05060b;
+  --foreground: #e6f1ff;
+  --surface: #0b101c;
+  --surface-2: #101829;
+  --card: #0b101c;
+  --card-foreground: #e6f1ff;
+  --popover: #0d1322;
+  --popover-foreground: #e6f1ff;
+  --primary: #00e5ff;
+  --primary-foreground: #00141a;
+  --secondary: #16203a;
+  --secondary-foreground: #e6f1ff;
+  --muted: #121a2e;
+  --muted-foreground: #93a4c3;
+  --accent: #ff2e88;
+  --accent-foreground: #1a0010;
+  --destructive: #ff4d5e;
+  --warning: #ffb020;
+  --success: #3dffa8;
+  --border: #1d2944;
+  --input: #22304f;
+  --ring: #00e5ff;
+
+  --neon: #00e5ff;
+  --neon-soft: rgb(0 229 255 / 0.16);
+  --magenta: #ff2e88;
+  --magenta-soft: rgb(255 46 136 / 0.18);
+  --grid-line: rgb(0 229 255 / 0.07);
+  --glow: 0 0 0 1px rgb(0 229 255 / 0.35), 0 0 24px rgb(0 229 255 / 0.18);
+  --glow-magenta: 0 0 0 1px rgb(255 46 136 / 0.4), 0 0 24px rgb(255 46 136 / 0.2);
+}
+
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: var(--radius-card);
+  --radius-2xl: var(--radius-tray);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-warning: var(--warning);
+  --color-success: var(--success);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-neon: var(--neon);
+  --color-neon-soft: var(--neon-soft);
+  --color-magenta: var(--magenta);
+  --color-magenta-soft: var(--magenta-soft);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/60;
+  }
+  html {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-size: 15px;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Fine HUD grid used behind the landing hero and the workspace. */
+  .cyber-grid {
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  /* The "stage tray": a raised neon-rimmed bay around the undistorted video. */
+  .holo-tray {
+    border-radius: var(--radius-tray);
+    background:
+      radial-gradient(120% 80% at 50% 0%, rgb(0 229 255 / 0.08), transparent 60%), var(--surface);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.04),
+      inset 0 0 0 1px var(--border),
+      var(--glow);
+  }
+
+  .hud-label {
+    @apply font-mono text-[12px] uppercase tracking-[0.14em] text-muted-foreground;
+  }
+
+  /* Highlight marks: established detail (cyan) vs newest correction (magenta). */
+  mark.hl-established {
+    background: var(--neon-soft);
+    color: var(--foreground);
+    border-bottom: 1px solid rgb(0 229 255 / 0.6);
+    border-radius: 3px;
+    padding: 0 2px;
+  }
+  mark.hl-correction {
+    background: var(--magenta-soft);
+    color: var(--foreground);
+    border-bottom: 1px solid rgb(255 46 136 / 0.7);
+    border-radius: 3px;
+    padding: 0 2px;
+  }
+
+  .scanlines {
+    background-image: repeating-linear-gradient(
+      to bottom,
+      rgb(255 255 255 / 0.025) 0,
+      rgb(255 255 255 / 0.025) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
