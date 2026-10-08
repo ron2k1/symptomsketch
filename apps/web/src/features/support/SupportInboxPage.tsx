@@ -126,7 +126,8 @@ function InboxQueue({ onAuthLost }: { onAuthLost(): void }) {
       {poll.data && rows.length === 0 ? (
         <p className="rounded-xl border border-dashed bg-card p-6 text-sm text-muted-foreground">
           No submitted tickets yet. A ticket appears here after a customer selects Send to Demo
-          Support.
+          Support. To send one yourself, open the site in a second Incognito (private) window: this
+          window keeps the staff session, which a customer sign-in here would replace.
         </p>
       ) : null}
 

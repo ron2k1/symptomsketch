@@ -5,6 +5,7 @@ import { APP_PATHS, LIMITS, type Ticket } from "@symptomsketch/contracts";
 import { Button } from "@/components/ui/button";
 import { createWorkCase, errorMessage } from "@/lib/api";
 import { formatTakeNumber } from "@/lib/format";
+import { DEMO_CREATE_BUTTON_ID } from "./labels";
 import { useIdempotencyKey } from "./useIdempotencyKey";
 
 /**
@@ -71,6 +72,7 @@ export function DemonstrationPanel({ ticket }: { ticket: Ticket }) {
         </p>
       ) : null}
       <Button
+        id={DEMO_CREATE_BUTTON_ID}
         type="button"
         variant={existing.length > 0 ? "ghost" : "default"}
         className="min-h-11 self-start"

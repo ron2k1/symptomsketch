@@ -163,6 +163,35 @@ describe("SupportTicketPage", () => {
     );
   });
 
+  it("with no demonstration yet, the reply box sends focus to Reply with a demonstration", async () => {
+    mockApi({
+      "GET /api/session": () => ({ status: 200, body: SUPPORT }),
+      "GET /api/tickets/tkt_1": () => ({
+        status: 200,
+        body: { ticket: { ...TICKET, workCaseIds: [] } },
+      }),
+    });
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Jump to the demonstration panel" }));
+    expect(document.activeElement?.textContent).toBe("Reply with a demonstration");
+  });
+
+  it("with no accepted take yet, the reply box links to the work case Recreate tab", async () => {
+    mockApi({
+      "GET /api/session": () => ({ status: 200, body: SUPPORT }),
+      "GET /api/tickets/tkt_1": () => ({ status: 200, body: { ticket: TICKET } }),
+      "GET /api/cases/case_w": () => ({
+        status: 200,
+        body: {
+          case: fixtureCase({ id: "case_w", ownerRole: "support", mode: "solution", takes: [] }),
+        },
+      }),
+    });
+    renderPage();
+    fireEvent.click(await screen.findByRole("link", { name: "Open the work case Recreate tab" }));
+    expect(await screen.findByText("workspace case_w/recreate")).toBeTruthy();
+  });
+
   it("shows the customer's AI support agent call transcript, labeled as AI", async () => {
     mockApi({
       "GET /api/session": () => ({ status: 200, body: SUPPORT }),

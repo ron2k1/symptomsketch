@@ -34,6 +34,22 @@ describe("SupportInboxPage", () => {
     vi.unstubAllGlobals();
   });
 
+  it("tells a signed-in customer that staff sign-in needs a second Incognito window", async () => {
+    mockApi({
+      "GET /api/session": () => ({
+        status: 200,
+        body: { ...SUPPORT, role: "customer" },
+      }),
+    });
+    render(
+      <MemoryRouter>
+        <SupportInboxPage />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(/signs the customer out/)).toBeTruthy();
+    expect(screen.getByText(/second Incognito \(private\) window/)).toBeTruthy();
+  });
+
   it("gates the queue behind the server-checked support code, then lists submitted tickets", async () => {
     mockApi({
       "GET /api/session": () => ({ status: 200, body: SIGNED_OUT }),

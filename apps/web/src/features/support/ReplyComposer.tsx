@@ -1,12 +1,14 @@
 import { useId, useState } from "react";
-import { LoaderCircle, RefreshCw, Send } from "lucide-react";
-import { ASSESSMENT_LABELS, LIMITS, type Ticket } from "@symptomsketch/contracts";
+import { Link } from "react-router-dom";
+import { Clapperboard, ExternalLink, LoaderCircle, RefreshCw, Send } from "lucide-react";
+import { APP_PATHS, ASSESSMENT_LABELS, LIMITS, type Ticket } from "@symptomsketch/contracts";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { createReply, errorMessage, isApiClientError } from "@/lib/api";
 import { formatBytes, formatDuration, formatTakeNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { DEMO_CREATE_BUTTON_ID } from "./labels";
 import { useIdempotencyKey } from "./useIdempotencyKey";
 import { useSessionDraft } from "./useSessionDraft";
 import type { WorkCaseTake } from "./useWorkCaseTakes";
@@ -42,6 +44,8 @@ export function ReplyComposer(props: ReplyComposerProps) {
   const sentHashes = new Set(
     ticket.replies.flatMap((r) => (r.attachment ? [r.attachment.sha256] : [])),
   );
+  // The newest work case is where the agent builds the clip to accept.
+  const latestWorkCaseId = ticket.workCaseIds[ticket.workCaseIds.length - 1] ?? null;
 
   async function onSend() {
     if (!canSend) return;
@@ -157,11 +161,32 @@ export function ReplyComposer(props: ReplyComposerProps) {
           </label>
         ))}
         {!takesLoading && workCaseTakes.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            {ticket.workCaseIds.length === 0
-              ? "No demonstration yet. Use Reply with a demonstration to create one."
-              : "No accepted solution take in the work case yet. Accept one in its Recreate tab."}
-          </p>
+          <div className="flex flex-col items-start gap-2">
+            <p className="text-xs text-muted-foreground">
+              {latestWorkCaseId === null
+                ? "No demonstration yet. Build one, accept it, then attach it here."
+                : "No accepted solution take in the work case yet. Accept one in its Recreate tab."}
+            </p>
+            {latestWorkCaseId === null ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11"
+                disabled={revoked}
+                onClick={() => document.getElementById(DEMO_CREATE_BUTTON_ID)?.focus()}
+              >
+                <Clapperboard aria-hidden />
+                Jump to the demonstration panel
+              </Button>
+            ) : (
+              <Button asChild variant="outline" className="min-h-11">
+                <Link to={APP_PATHS.caseTab(latestWorkCaseId, "recreate")}>
+                  <ExternalLink aria-hidden />
+                  Open the work case Recreate tab
+                </Link>
+              </Button>
+            )}
+          </div>
         ) : null}
         {takesError && workCaseTakes.length === 0 ? (
           <p className="text-xs text-destructive">{errorMessage(takesError)}</p>
