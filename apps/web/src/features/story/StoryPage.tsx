@@ -119,6 +119,13 @@ function StoryWorkspace({ caseId, caseData }: { caseId: string; caseData: CaseDe
     void story.start();
   };
 
+  const onRetry = () => {
+    // The retry opens a new session with a new stream; the failed attempt's recorder is bound to
+    // the closed one and would keep the new session from being recorded at all.
+    recorder.reset();
+    story.fatal?.retry?.();
+  };
+
   const caption =
     story.playingBeat?.caption ??
     (phase === "starting"
@@ -165,7 +172,7 @@ function StoryWorkspace({ caseId, caseData }: { caseId: string; caseData: CaseDe
                   Start the story
                 </Button>
               ) : story.fatal?.retry ? (
-                <Button type="button" size="lg" className="min-h-11" onClick={story.fatal.retry}>
+                <Button type="button" size="lg" className="min-h-11" onClick={onRetry}>
                   Retry
                 </Button>
               ) : null}

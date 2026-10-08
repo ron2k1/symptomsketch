@@ -54,14 +54,24 @@ export function StoryEndingPanel({ ticketId, frameUrl }: { ticketId: string; fra
     return () => URL.revokeObjectURL(url);
   }, [reel]);
 
-  const onSubmit = (ev: FormEvent) => {
-    ev.preventDefault();
-    if (running || text.trim().length < 3) return;
+  /** Every run (first click or Retry) opens a new session, so it records from a fresh recorder. */
+  const beginRun = () => {
     recorder.reset();
     setReplayUrl(null);
     // The click is the user gesture that lets the ending play with sound.
     if (videoRef.current) videoRef.current.muted = false;
+  };
+
+  const onSubmit = (ev: FormEvent) => {
+    ev.preventDefault();
+    if (running || text.trim().length < 3) return;
+    beginRun();
     void ending.start(text.trim());
+  };
+
+  const onRetry = () => {
+    beginRun();
+    ending.error?.retry?.();
   };
 
   const status = statusLine(ending);
@@ -126,12 +136,7 @@ export function StoryEndingPanel({ ticketId, frameUrl }: { ticketId: string; fra
         <div role="alert" className="space-y-2 text-sm text-destructive">
           <p>{ending.error.message}</p>
           {ending.error.retry ? (
-            <Button
-              type="button"
-              variant="outline"
-              className="min-h-11"
-              onClick={ending.error.retry}
-            >
+            <Button type="button" variant="outline" className="min-h-11" onClick={onRetry}>
               Retry
             </Button>
           ) : null}

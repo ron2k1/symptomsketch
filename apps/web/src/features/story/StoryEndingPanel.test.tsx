@@ -12,6 +12,10 @@ const live = vi.hoisted(() => ({
     played: string[];
     disconnected: boolean;
   }>,
+  /** Emit main_video + main_audio on connect (a distinct stream per session). */
+  tracks: false,
+  /** Enqueue replies null (FastH3 refused) for this many sessions. */
+  refuseEnqueue: 0,
 }));
 
 vi.mock("./fast-h3", async (importOriginal) => {
@@ -30,6 +34,12 @@ vi.mock("./fast-h3", async (importOriginal) => {
     }
     async connect() {
       this.rec.handlers.status?.("ready");
+      if (!live.tracks) return;
+      const stream = {
+        id: `stub-stream-${live.sessions.length}`,
+        getTracks: () => [{ kind: "video" }, { kind: "audio" }],
+      } as unknown as MediaStream;
+      this.rec.handlers.tracks?.(stream, ["main_video", "main_audio"]);
     }
     async configure() {}
     async uploadFile() {
@@ -37,6 +47,7 @@ vi.mock("./fast-h3", async (importOriginal) => {
     }
     async enqueue(p: EnqueueParams) {
       this.rec.enqueued.push(p);
+      if (live.sessions.length <= live.refuseEnqueue) return null;
       this.n += 1;
       return { clipId: `stub-clip-${this.n}` };
     }
@@ -76,10 +87,13 @@ function emit(type: string, clipId: string) {
 
 beforeEach(() => {
   live.sessions.length = 0;
+  live.tracks = false;
+  live.refuseEnqueue = 0;
 });
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 async function writeEnding(text: string) {
@@ -149,6 +163,57 @@ describe("StoryEndingPanel (staff: Write the ending)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(director).toBe(2));
     expect(live.sessions).toHaveLength(2);
+  });
+
+  it("Retry records the new session, not the failed attempt's closed stream", async () => {
+    // TEST STUB recorder: remembers which stream each MediaRecorder was built on.
+    const recordedStreams: string[] = [];
+    vi.stubGlobal(
+      "MediaRecorder",
+      class {
+        static isTypeSupported = () => true;
+        state = "inactive";
+        mimeType = "video/webm";
+        ondataavailable: unknown = null;
+        onstop: (() => void) | null = null;
+        constructor(stream: MediaStream) {
+          recordedStreams.push(stream.id);
+        }
+        start() {
+          this.state = "recording";
+        }
+        pause() {
+          this.state = "paused";
+        }
+        resume() {
+          this.state = "recording";
+        }
+        stop() {
+          this.state = "inactive";
+          this.onstop?.();
+        }
+      },
+    );
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    live.tracks = true;
+    live.refuseEnqueue = 1;
+    mockApi({
+      [`POST ${DIRECTOR_URL}`]: () => ({
+        status: 200,
+        body: { scenes: [scene(1)], modelId: "stub", latencyMs: 4200 },
+      }),
+      [`POST ${TOKEN_URL}`]: () => ({ status: 200, body: TOKEN }),
+      [`GET ${FRAME_URL}`]: () => ({ status: 200, body: {} }),
+    });
+    render(<StoryEndingPanel ticketId="tkt_1" frameUrl={FRAME_URL} />);
+    await writeEnding("Restart it.");
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("FastH3 did not accept the ending scenes.");
+    expect(recordedStreams).toEqual(["stub-stream-1"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(live.sessions[1]?.enqueued).toHaveLength(1));
+    expect(recordedStreams).toEqual(["stub-stream-1", "stub-stream-2"]);
   });
 
   it("needs at least a few characters before it writes anything", () => {
