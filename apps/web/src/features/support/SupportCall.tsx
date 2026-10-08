@@ -209,7 +209,9 @@ export function SupportCall({ ticketId, onEnded }: SupportCallProps) {
       )}
 
       {view.detail && active ? (
-        <p className="text-sm text-muted-foreground">{view.detail}…</p>
+        <p role="status" className="text-sm text-muted-foreground">
+          {view.detail}…
+        </p>
       ) : null}
       {view.error ? (
         <p role="alert" className="text-sm text-destructive">
@@ -273,7 +275,11 @@ export function SupportCall({ ticketId, onEnded }: SupportCallProps) {
           </Button>
         </div>
       )}
-      {view.micNotice ? <p className="text-sm text-warning">{view.micNotice}</p> : null}
+      {view.micNotice ? (
+        <p role="status" className="text-sm text-warning">
+          {view.micNotice}
+        </p>
+      ) : null}
 
       {!idle ? (
         <>
