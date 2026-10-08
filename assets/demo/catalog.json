@@ -1,0 +1,70 @@
+{
+  "fixtures": [
+    {
+      "id": "robot-vacuum",
+      "name": "Robot vacuum",
+      "category": "Home robotics",
+      "tagline": "Demo product · SymptomSketch Demo Support",
+      "photo": "demo-vacuum.jpg",
+      "landingImage": "/assets/demo-vacuum.jpg",
+      "imageWidth": 1600,
+      "imageHeight": 1067,
+      "alt": "A white round robot vacuum cleaner on a gray area rug in front of a cream sofa and a black geometric wire side table.",
+      "exampleIssue": "It stops, then jerks backward once.",
+      "procedure": {
+        "procedureId": "SS-DEMO-RV-01",
+        "title": "Start a first cleaning run on a flat floor",
+        "steps": [
+          "Place the vacuum on a flat, clear floor with its front bumper facing open space, well away from stairs and drop-offs.",
+          "Press the start button once and step back.",
+          "Watch the first few seconds: the vacuum drives forward in a roughly straight line without stopping or reversing until it approaches an obstacle."
+        ],
+        "source": "Authored SymptomSketch demo procedure (not a manufacturer manual)"
+      }
+    },
+    {
+      "id": "desk-fan",
+      "name": "Desk fan",
+      "category": "Home appliances",
+      "tagline": "Demo product · SymptomSketch Demo Support",
+      "photo": "demo-fan.jpg",
+      "landingImage": "/assets/demo-fan.jpg",
+      "imageWidth": 1600,
+      "imageHeight": 1067,
+      "alt": "A black desk fan with a round guard on a short stalk and a round base, standing on a glass table beside a small potted plant, with a plush toy cat sitting on the base.",
+      "exampleIssue": "The head swings to the left, stops, then snaps back to the right instead of sweeping smoothly.",
+      "procedure": {
+        "procedureId": "SS-DEMO-DF-01",
+        "title": "Run the fan on low with the head sweeping side to side",
+        "steps": [
+          "Stand the fan on a flat, stable surface with the guard facing open space and nothing touching the blades or the base.",
+          "Switch the fan on at its lowest speed, then turn on the side-to-side sweep if your fan has one.",
+          "Watch the head for a full sweep: it turns steadily to one side and then steadily back, without jerking, stopping or tilting."
+        ],
+        "source": "Authored SymptomSketch demo procedure (not a manufacturer manual)"
+      }
+    },
+    {
+      "id": "camera-drone",
+      "name": "Camera drone",
+      "category": "Consumer drones",
+      "tagline": "Demo product · SymptomSketch Demo Support",
+      "photo": "demo-drone.jpg",
+      "landingImage": "/assets/demo-drone.jpg",
+      "imageWidth": 1600,
+      "imageHeight": 1200,
+      "alt": "A white quadcopter camera drone with landing legs and an underslung gimbal camera hovering just above a lake at dusk.",
+      "exampleIssue": "It lifts off, drifts sideways, then dips and levels out again.",
+      "procedure": {
+        "procedureId": "SS-DEMO-CD-01",
+        "title": "Take off and hold a low hover in an open area",
+        "steps": [
+          "Set the drone on a flat, level surface in a wide open area with no people, pets or obstacles within arm's reach of the propellers.",
+          "Power on the drone and the remote, then lift off gently to about eye height.",
+          "Release the controls and watch for a few seconds: the drone holds one spot in the air, level, without drifting sideways or bobbing up and down."
+        ],
+        "source": "Authored SymptomSketch demo procedure (not a manufacturer manual)"
+      }
+    }
+  ]
+}

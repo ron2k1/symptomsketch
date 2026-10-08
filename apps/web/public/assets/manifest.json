@@ -1,0 +1,58 @@
+[
+  {
+    "src": "/assets/hero-center.jpg",
+    "width": 1600,
+    "height": 1067,
+    "alt": "A 3D printer's print head above a small magenta printed cup on the build plate, lit by magenta and cyan lights in a dark room.",
+    "role": "hero"
+  },
+  {
+    "src": "/assets/parallax-fiber.jpg",
+    "width": 1600,
+    "height": 1018,
+    "alt": "A bundle of fiber-optic strands glowing blue against a black background.",
+    "role": "parallax"
+  },
+  {
+    "src": "/assets/parallax-neon.jpg",
+    "width": 1600,
+    "height": 1067,
+    "alt": "Pink illuminated block letters at night with a ribbon of blue light-painting curving across them.",
+    "role": "parallax"
+  },
+  {
+    "src": "/assets/parallax-lights.jpg",
+    "width": 1600,
+    "height": 2133,
+    "alt": "Long-exposure light trails glowing white, blue and red on a dark city street at night.",
+    "role": "parallax"
+  },
+  {
+    "src": "/assets/home-interior.jpg",
+    "width": 1600,
+    "height": 2400,
+    "alt": "A bright living room with a gray sofa, two framed prints, wooden side tables and a knitted pouf on a woven rug.",
+    "role": "parallax"
+  },
+  {
+    "src": "/assets/demo-vacuum.jpg",
+    "width": 1600,
+    "height": 1067,
+    "alt": "A white round robot vacuum cleaner on a gray area rug in front of a cream sofa and a black geometric wire side table.",
+    "role": "product"
+  },
+  {
+    "src": "/assets/demo-fan.jpg",
+    "width": 1600,
+    "height": 1067,
+    "alt": "A black desk fan with a round guard on a short stalk and a round base, standing on a glass table beside a small potted plant, with a plush toy cat sitting on the base.",
+    "role": "product"
+  },
+  {
+    "src": "/assets/demo-drone.jpg",
+    "width": 1600,
+    "height": 1200,
+    "alt": "A white quadcopter camera drone with landing legs and an underslung gimbal camera hovering just above a lake at dusk.",
+    "role": "product"
+  }
+]
