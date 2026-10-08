@@ -139,8 +139,11 @@ export function StoryEndingPanel({ ticketId, frameUrl }: { ticketId: string; fra
       ) : null}
 
       <div hidden={!showStage} className="space-y-2">
+        {/* Distinct keys: reusing the live element would keep its srcObject (the closed stream),
+            which wins over src, so the replay would show the dead stream instead. */}
         {phase === "done" && replayUrl ? (
           <video
+            key="replay"
             src={replayUrl}
             controls
             className="aspect-video w-full rounded-md bg-foreground"
@@ -148,6 +151,7 @@ export function StoryEndingPanel({ ticketId, frameUrl }: { ticketId: string; fra
           />
         ) : (
           <video
+            key="live"
             ref={videoRef}
             poster={frameUrl}
             playsInline
