@@ -11,6 +11,7 @@ import { heartbeatLease, loadReference, releaseLease, releaseLeaseKeepalive } fr
 import { LIVE_COPY, LIVE_POLICY, evaluateLivePolicy, reconnectDelayMs } from "./live-policy";
 import { STAGE_ERRORS, STOP_NOTICES, stageErrorFrom, type StageError } from "./preview-errors";
 import { X2Preview, type FreshFrame } from "./x2-preview";
+import { EMPTY_STATS, type LiveStats } from "./x2-stats";
 
 export type SessionStatus = Extract<
   PreviewStatus,
@@ -31,14 +32,20 @@ export interface SessionView {
    * while connecting, reconnecting, restarting or applying a new plan: clips start after it.
    */
   outputSince: number | null;
+  /** performance.now() of the explicit Start; spans reconnects. Null while stopped. */
+  startedAt: number | null;
   /** The tab is hidden (the preview stops after LIVE_POLICY.hiddenStopMs). */
   hidden: boolean;
+  /** Measured numbers for the stage readout (null = not measured). */
+  stats: LiveStats;
 }
 
 const STOPPED = {
   activePlanId: null,
   reconnecting: false,
   outputSince: null,
+  startedAt: null,
+  stats: EMPTY_STATS,
 } as const satisfies Partial<SessionView>;
 
 export const INITIAL_SESSION_VIEW: SessionView = {
@@ -215,6 +222,7 @@ export class PreviewController {
     };
     run.watchdog = window.setInterval(() => this.checkPolicy(run), 1000);
     this.run = run;
+    this.update({ startedAt: performance.now() });
     await this.open(run);
   }
 
@@ -281,6 +289,13 @@ export class PreviewController {
   private update(patch: Partial<SessionView>): void {
     this.view = { ...this.view, ...patch };
     this.onChange(this.view);
+  }
+
+  private setStats(patch: Partial<LiveStats>): void {
+    const prev = this.view.stats;
+    const next = { ...prev, ...patch };
+    const same = (Object.keys(next) as Array<keyof LiveStats>).every((k) => next[k] === prev[k]);
+    if (!same) this.update({ stats: next });
   }
 
   private async referenceFor(url: string): Promise<{ blob: Blob; still: ImageBitmap }> {
@@ -374,6 +389,12 @@ export class PreviewController {
         if (action === "terminate") void this.fail(STAGE_ERRORS.moderated);
         else this.update({ notice: MODERATION_WARNING });
       }),
+      preview.on("stats", (link) => {
+        if (mine()) this.setStats(link);
+      }),
+      preview.on("promptAck", ({ ms }) => {
+        if (mine()) this.setStats({ appliedMs: ms });
+      }),
     );
     conn.heartbeat = window.setInterval(
       () => void this.heartbeat(run, conn),
@@ -463,6 +484,7 @@ export class PreviewController {
       error: null,
       reconnecting: true,
       outputSince: null,
+      stats: { ...EMPTY_STATS, appliedMs: this.view.stats.appliedMs },
     });
     // The reopen must not depend on the old session closing cleanly.
     const closing = (old ? this.closeConnection(run, old) : Promise.resolve()).catch(

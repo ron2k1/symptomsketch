@@ -13,6 +13,7 @@ import { formatTakeNumber } from "@/lib/format";
 import { checkRecordingSupport } from "@/features/capture/recorder";
 import { useClipCapture } from "@/features/capture/useClipCapture";
 import { LIVE_COPY } from "./live-policy";
+import { usePlanRequestTiming } from "./plan-timing";
 import { StageControls } from "./StageControls";
 import { StageScreen, type StageScreenProps } from "./StageScreen";
 import { useX2Session } from "./useX2Session";
@@ -70,6 +71,7 @@ export function LiveStage(props: LiveStageProps) {
     onTakeUploaded: props.onTakeUploaded,
   });
   const cv = capture.view;
+  const planTiming = usePlanRequestTiming(caseId);
   const [started, setStarted] = useState(false);
 
   // Clipping never interrupts the session, so the stage reports the save on top of it.
@@ -209,6 +211,16 @@ export function LiveStage(props: LiveStageProps) {
         clipHint={clipHint}
         canReplay={canReplay}
         notice={cv.notice ?? session.notice}
+        readout={
+          sessionActive && !takeMode
+            ? {
+                stats: session.stats,
+                plannedMs: planTiming?.ms ?? null,
+                startedAt: session.startedAt,
+                reconnecting: session.reconnecting,
+              }
+            : null
+        }
         onStart={onStart}
         onStop={() => void controller.stop("user")}
         onClip={() => void capture.clip()}

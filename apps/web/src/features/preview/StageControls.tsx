@@ -2,6 +2,7 @@ import { LoaderCircle, Play, Repeat, RotateCcw, Scissors, Square, X } from "luci
 import type { PreviewStatus } from "@symptomsketch/contracts";
 import { Button } from "@/components/ui/button";
 import type { ClipView } from "@/features/capture/useClipCapture";
+import { StageStats, type StageStatsProps } from "./StageStats";
 
 const BTN = "h-11 px-4";
 
@@ -19,6 +20,8 @@ export interface StageControlsProps {
   clipHint: string | null;
   canReplay: boolean;
   notice: string | null;
+  /** Live Reactor X2 readout; null hides it. */
+  readout: StageStatsProps | null;
   onStart(): void;
   onStop(): void;
   onClip(): void;
@@ -52,6 +55,8 @@ export function StageControls(p: StageControlsProps) {
         </div>
         <div className="flex flex-wrap items-center gap-2">{renderActions(p)}</div>
       </div>
+
+      {p.readout && <StageStats {...p.readout} />}
 
       {p.notice && (
         <div className="flex items-start justify-between gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2 text-[13px] text-muted-foreground">

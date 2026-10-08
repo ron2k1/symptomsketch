@@ -9,6 +9,7 @@ import {
 } from "./motion-sketch";
 import { detectProductRegion } from "./product-region";
 import { createStillSource, type StillSource } from "./source-canvas";
+import { linkStatsFrom, type LinkStats, type StatsSample } from "./x2-stats";
 
 /** Output frames this soon after setPrompt are left over from the previous run (motion lab). */
 const STALE_AFTER_PROMPT_MS = 250;
@@ -64,6 +65,10 @@ export interface X2PreviewEvents {
   error: X2PreviewError;
   /** "terminate" ends the session shortly after. */
   moderation: "warn" | "terminate";
+  /** WebRTC link numbers from the SDK's statsUpdate (every ~2 s while ready). */
+  stats: LinkStats;
+  /** setPrompt round trip to X2's correlated prompt_accepted reply. */
+  promptAck: { ms: number };
 }
 
 type Listener<K extends keyof X2PreviewEvents> = (payload: X2PreviewEvents[K]) => void;
@@ -124,13 +129,18 @@ export class X2Preview {
       const action = (m.data as { action?: unknown } | null)?.action;
       if (action === "warn" || action === "terminate") this.emit("moderation", action);
     };
+    const stats = (sample: StatsSample) => {
+      if (!this.closed) this.emit("stats", linkStatsFrom(sample));
+    };
     x2.on("statusChanged", status);
     x2.on("error", error);
     x2.on("runtimeMessage", runtime);
+    x2.on("statsUpdate", stats);
     this.unsubs.push(
       () => x2.off("statusChanged", status),
       () => x2.off("error", error),
       () => x2.off("runtimeMessage", runtime),
+      () => x2.off("statsUpdate", stats),
       x2.onStateUpdate((m) => this.emit("state", m)),
       x2.onGenerationStarted(() => this.arm()),
       x2.onGenerationStopped((m) => this.emit("generationStopped", { reason: m.reason })),
@@ -237,8 +247,9 @@ export class X2Preview {
     this.runId += 1;
     const id = this.runId;
     this.firedAt = performance.now();
-    const ack = await this.x2.setPrompt({ prompt });
-    if (!ack) throw new PreviewFailure(this.lastErrorCode("invalid_command"), "prompt");
+    if (!(await this.sendPrompt(prompt))) {
+      throw new PreviewFailure(this.lastErrorCode("invalid_command"), "prompt");
+    }
     return id;
   }
 
@@ -253,12 +264,20 @@ export class X2Preview {
     return this.fire(prompt);
   }
 
+  /** setPrompt resolves with X2's correlated prompt_accepted (never rejects); times that reply. */
+  private async sendPrompt(prompt: string): Promise<boolean> {
+    const sentAt = performance.now();
+    const ack = await this.x2.setPrompt({ prompt });
+    if (ack && !this.closed) this.emit("promptAck", { ms: performance.now() - sentAt });
+    return ack !== undefined;
+  }
+
   /**
    * Mid-run correction; applies from the next block, no restart. Callers serialize these.
    * With a new `action`, the motion sketch replays from the still pose so the change is visible.
    */
   async correct(prompt: string, action?: SelectedAction | null): Promise<boolean> {
-    const ok = (await this.x2.setPrompt({ prompt })) !== undefined;
+    const ok = await this.sendPrompt(prompt);
     if (ok && action !== undefined && !this.closed) {
       this.stopMotion();
       this.motion = buildMotionProgram(action, this.region, this.purpose);

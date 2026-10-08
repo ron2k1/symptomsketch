@@ -72,6 +72,7 @@ vi.mock("./lease", () => ({
 const { PreviewController } = await import("./preview-controller");
 const { STAGE_ERRORS, STOP_NOTICES } = await import("./preview-errors");
 const { LIVE_COPY } = await import("./live-policy");
+const { EMPTY_STATS } = await import("./x2-stats");
 const { ApiClientError } = await import("@/lib/api");
 
 function plan(id: string, prompt: string): PlanRevision {
@@ -147,6 +148,7 @@ describe("PreviewController (infinite live preview)", () => {
       activePlanId: "plan_1",
       outputSince: null,
     });
+    expect(c.current.startedAt).not.toBeNull();
 
     preview.frame(0.04, true);
     expect(c.current.status).toBe("live");
@@ -259,6 +261,15 @@ describe("PreviewController (infinite live preview)", () => {
     off();
     preview.frame(4);
     expect(seen).toEqual([2, 3]);
+  });
+
+  it("publishes measured link stats and the prompt ack time, cleared on stop", async () => {
+    const { c, preview } = await startLive();
+    preview.emit("stats", { fps: 24, rttMs: 40, connectMs: 2_100 });
+    preview.emit("promptAck", { ms: 120 });
+    expect(c.current.stats).toEqual({ fps: 24, rttMs: 40, connectMs: 2_100, appliedMs: 120 });
+    await c.stop("user");
+    expect(c.current.stats).toEqual(EMPTY_STATS);
   });
 
   it("heartbeats every 10 s and stops when the lease is lost", async () => {
