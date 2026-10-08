@@ -43,7 +43,7 @@ export function ExampleWorkspace() {
           <span className="text-sm">{productName}</span>
         </FloatCard>
         <FloatCard label="What happened" className="md:absolute md:top-[46%] md:right-0 md:w-56">
-          <span className="block rounded-lg border border-border px-2.5 py-2 text-sm leading-relaxed">
+          <span className="voice-bubble block rounded-lg border border-field-border bg-field px-2.5 py-2">
             {whatHappened.before}
             <mark className="hl-established">{whatHappened.marks[0]}</mark>{" "}
             <mark className="hl-established">{whatHappened.marks[1]}</mark>

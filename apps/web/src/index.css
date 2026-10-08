@@ -3,14 +3,16 @@
 @import "@fontsource-variable/inter";
 @import "@fontsource/jetbrains-mono/400.css";
 @import "@fontsource/jetbrains-mono/600.css";
+@import "@fontsource-variable/source-serif-4";
 
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Type system (each face has one job):
+ * Type system (three faces, each with one job):
  *   font-sans    Inter: UI chrome and body copy.
  *   font-reactor JetBrains Mono: everything that names or shows off the Reactor X2 engine
  *                (ReactorMark, the live stage badge, live stats readouts). Contract class name.
+ *   font-voice   Source Serif 4: the customer's own words: every text box and conversation bubble.
  *
  * SymptomSketch theme, from the workspace concept mockups: warm white paper, white cards, forest
  * green actions, a sand frame around the stage. Every color in the app comes from these tokens.
@@ -64,8 +66,14 @@
   --reactor-soft: rgb(20 32 27 / 0.06);
   --reactor-glow: 0 0 0 1px rgb(127 212 168 / 0.25), 0 6px 18px rgb(20 32 27 / 0.22);
 
-  /* Type face (mapped to font-reactor in @theme below). */
+  /* Type faces (mapped to font-reactor / font-voice in @theme below). */
   --reactor-face: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --voice-face: "Source Serif 4 Variable", "Iowan Old Style", Georgia, ui-serif, serif;
+
+  /* Text boxes: a sand-tinted writing surface with a stronger edge than cards. */
+  --field: #fbf3e4;
+  --field-border: #cbbd9f;
+  --field-focus-ring: rgb(46 94 78 / 0.28);
 }
 
 @theme inline {
@@ -74,6 +82,8 @@
   --font-mono: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   /* Reactor X2 face (ReactorMark, stage badge, live stats). Builder contract: `font-reactor`. */
   --font-reactor: var(--reactor-face);
+  /* The customer's words: text boxes and conversation bubbles. */
+  --font-voice: var(--voice-face);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -115,6 +125,8 @@
   --color-reactor-signal: var(--reactor-signal);
   --color-reactor-line: var(--reactor-line);
   --color-reactor-soft: var(--reactor-soft);
+  --color-field: var(--field);
+  --color-field-border: var(--field-border);
 }
 
 @layer base {
@@ -131,6 +143,26 @@
   :focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
+  }
+
+  /*
+   * Text boxes: the customer's words are set in the voice face, apart from the Inter chrome.
+   * Base layer, so a call site's own `font-mono` still wins. Passwords and codes stay in Inter.
+   */
+  textarea,
+  input:is(
+    [type="text"],
+    [type="search"],
+    [type="email"],
+    [type="url"],
+    [type="tel"],
+    :not([type])
+  ) {
+    font-family: var(--voice-face);
+  }
+  textarea::placeholder,
+  input:not([type="password"])::placeholder {
+    font-style: italic;
   }
 }
 
@@ -197,6 +229,37 @@
   .scanlines {
     background-image: none;
   }
+
+  /* A conversation bubble: the words in the voice face, framed like a text box. */
+  .voice-bubble {
+    font-family: var(--voice-face);
+    font-size: 15.5px;
+    line-height: 1.55;
+  }
+}
+
+/*
+ * The writing surface of every shadcn text box (Input / Textarea, matched by data-slot). Unlayered
+ * on purpose: it must beat the primitives' own `bg-transparent`, `border-input` and `md:text-sm`
+ * utilities, which a base-layer rule cannot. Sand-tinted fill, stronger edge, 16px type, and a
+ * primary focus ring. Password fields keep the plain look.
+ */
+[data-slot="textarea"],
+[data-slot="input"]:not([type="password"]):not([type="file"]) {
+  background-color: var(--field);
+  border-color: var(--field-border);
+  font-size: 16px;
+  line-height: 1.5;
+}
+[data-slot="textarea"]:focus-visible,
+[data-slot="input"]:not([type="password"]):not([type="file"]):focus-visible {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--field-focus-ring);
+}
+[data-slot="textarea"]:read-only,
+[data-slot="textarea"]:disabled,
+[data-slot="input"]:disabled {
+  background-color: var(--surface-2);
 }
 
 @media (prefers-reduced-motion: reduce) {

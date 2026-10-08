@@ -35,8 +35,8 @@ function MessageItem({
   return (
     <li
       className={cn(
-        "rounded-xl border p-3",
-        fromUser ? "border-border bg-surface-2" : "border-neon/25 bg-neon-soft/40",
+        "rounded-xl border p-3 shadow-[var(--glow)]",
+        fromUser ? "border-field-border bg-field" : "border-neon/35 bg-neon-soft/40",
       )}
     >
       <p className="mb-1 flex items-baseline justify-between gap-2">
@@ -45,7 +45,7 @@ function MessageItem({
           {formatTimestamp(message.createdAt)}
         </time>
       </p>
-      <p className="whitespace-pre-wrap text-sm leading-relaxed">
+      <p className="voice-bubble whitespace-pre-wrap text-foreground">
         <HighlightedText
           text={message.text}
           spans={message.highlights}
