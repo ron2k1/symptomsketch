@@ -8,6 +8,7 @@ import {
   type AssessmentUiStatus,
   type CheckResult,
   type TicketAttachmentPurpose,
+  type StoryBeatsUpload,
   type TicketSnapshot,
 } from "@symptomsketch/contracts";
 import type { AppContext } from "../context.ts";
@@ -213,5 +214,75 @@ export function buildSnapshot(input: SnapshotInput): {
       lineage: { ...lineage, assetKind: original.kind },
     });
   }
+  return { snapshot, attachments };
+}
+
+export interface StorySnapshotInput {
+  ctx: AppContext;
+  caseRow: CaseRow;
+  storyId: string;
+  beats: StoryBeatsUpload;
+  submittedAt: string;
+}
+
+/**
+ * Snapshot for a ticket a sent MiniMax FastH3 story opens on a case with no ticket. There is no X2
+ * take: no take fields, no visual check ("unavailable"), no clip review ("unreviewed"). The message
+ * is the customer's own typed issue exactly as written; the case's product photo is the reference
+ * attachment (Sam's portrait is built from it). Null when the case has no live product reference.
+ */
+export function buildStorySnapshot(
+  input: StorySnapshotInput,
+): { snapshot: TicketSnapshot; attachments: PlannedAttachment[] } | null {
+  const { ctx, caseRow, storyId, beats, submittedAt } = input;
+  const db = ctx.db;
+  if (!caseRow.product_revision_id) return null;
+  const product = getRow<ProductRevisionRow>(
+    db,
+    "SELECT * FROM product_revisions WHERE id = ? AND case_id = ?",
+    caseRow.product_revision_id,
+    caseRow.id,
+  );
+  const reference = product ? getLiveAsset(db, product.normalized_asset_id) : undefined;
+  if (!product || !reference || reference.case_id !== caseRow.id) return null;
+  const modelLabel = caseRow.model_label ?? product.model_label ?? null;
+  const productLabel = fixtureName(ctx, product.fixture_id) ?? modelLabel ?? "Uploaded product";
+  const scenes = beats.beats.length;
+  const snapshot: TicketSnapshot = {
+    caseTitle: caseRow.title,
+    purpose: caseRow.mode,
+    purposeLabel: PURPOSE_LABELS[caseRow.mode],
+    productLabel,
+    sourceType: product.source_type,
+    modelLabel,
+    originalAccount: caseRow.original_account,
+    actionsTried: caseRow.actions_tried,
+    unresolved: [],
+    takeId: null,
+    takeNumber: null,
+    finalSha256: null,
+    caption: `Customer story (MiniMax FastH3), ${scenes} scene${scenes === 1 ? "" : "s"}`,
+    durationMs: beats.durationMs,
+    assessmentStatus: "unavailable",
+    assessmentSummary: null,
+    reviewState: "unreviewed",
+    uncertaintyNote: null,
+    message: caseRow.original_account,
+    submittedAt,
+    storyId,
+  };
+  const attachments: PlannedAttachment[] = [
+    {
+      asset: reference,
+      purpose: "customer_reference",
+      filename: `symptomsketch-case-${caseLabel(caseRow.id)}-reference${extFor(reference.mime)}`,
+      lineage: {
+        sourceCaseId: caseRow.id,
+        productRevisionId: product.id,
+        storyId,
+        assetKind: reference.kind,
+      },
+    },
+  ];
   return { snapshot, attachments };
 }

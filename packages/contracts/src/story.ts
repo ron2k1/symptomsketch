@@ -193,7 +193,15 @@ export const TicketStory = z.object({
 });
 export type TicketStory = z.infer<typeof TicketStory>;
 
-export const StorySubmitResponse = z.object({ ticketId: Id.nullable(), story: TicketStory });
+/**
+ * ticketId is the case's live ticket the story is attached to. When the case had none, sending the
+ * story opens it (ticketOpened true): the story is that ticket's first entry.
+ */
+export const StorySubmitResponse = z.object({
+  ticketId: Id.nullable(),
+  ticketOpened: z.boolean().optional(),
+  story: TicketStory,
+});
 export type StorySubmitResponse = z.infer<typeof StorySubmitResponse>;
 
 export const TicketStoryResponse = z.object({ story: TicketStory.nullable() });

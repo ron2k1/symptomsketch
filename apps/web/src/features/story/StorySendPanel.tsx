@@ -85,14 +85,14 @@ export function StorySendPanel({
             <div role="status" className="space-y-1 text-sm">
               <p className="inline-flex items-center gap-2 font-medium text-success">
                 <CheckCircle2 className="size-4" aria-hidden />
-                {send.result.ticketId ? "Sent to Demo Support" : "Saved to your case"}
+                {sentHeadline(send.result)}
               </p>
               <p className="text-muted-foreground">
-                {send.result.ticketId
-                  ? "Support sees the recording, every scene and the last frame on your ticket."
-                  : "Support sees it on your ticket once you send one from the Support tab."}{" "}
+                {sentDetail(send.result)}{" "}
                 <Link to={supportTab} className="underline underline-offset-2">
-                  Open the Support tab
+                  {send.result.ticketId
+                    ? "Open the Support tab to talk to support"
+                    : "Open the Support tab"}
                 </Link>
               </p>
             </div>
@@ -126,4 +126,19 @@ export function StorySendPanel({
       ) : null}
     </section>
   );
+}
+
+/** Exactly what the send did: opened the case's ticket, attached to it, or stored without one. */
+export function sentHeadline(result: StorySubmitResponse): string {
+  if (result.ticketOpened) return "Ticket open with Demo Support";
+  return result.ticketId ? "Sent to Demo Support" : "Saved to your case";
+}
+
+export function sentDetail(result: StorySubmitResponse): string {
+  if (result.ticketOpened) {
+    return "Your story opened the ticket: support sees the recording, every scene and the last frame.";
+  }
+  return result.ticketId
+    ? "Support sees the recording, every scene and the last frame on your ticket."
+    : "Support sees it on your ticket once you send one from the Support tab.";
 }

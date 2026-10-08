@@ -1,7 +1,9 @@
 import {
   SUPPORT_QUEUE_LABEL,
   type CreateTicketRequest,
+  type StoryBeatsUpload,
   type Ticket,
+  type TicketSnapshot,
   type TicketSummary,
 } from "@symptomsketch/contracts";
 import type { AppContext } from "../context.ts";
@@ -12,7 +14,7 @@ import { getTake, requireAcceptedTake } from "./accepted-take.ts";
 import { listTicketSummariesForCase, parseSnapshot, ticketDto } from "./dto.ts";
 import { caseIsLive } from "./lifecycle.ts";
 import type { CaseRow, TicketRow } from "./rows.ts";
-import { buildSnapshot } from "./snapshot.ts";
+import { buildSnapshot, buildStorySnapshot, type PlannedAttachment } from "./snapshot.ts";
 
 /** Customer ticket submission + reads (spec 5, 11, 13). */
 
@@ -108,42 +110,101 @@ export function createTicket(
 
   const ticketId = newId("tkt");
   tx(ctx.db, () => {
-    ctx.db
-      .prepare(
-        `INSERT INTO tickets (id, case_id, owner_session_id, take_id, queue, status, snapshot_json,
-           idempotency_key, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 'submitted', ?, ?, ?, ?)`,
-      )
-      .run(
-        ticketId,
-        caseRow.id,
-        session.id,
-        take.id,
-        SUPPORT_QUEUE_LABEL,
-        toJson(snapshot),
-        body.idempotencyKey,
-        submittedAt,
-        submittedAt,
-      );
-    const insert = ctx.db.prepare(
-      `INSERT INTO ticket_attachments (id, ticket_id, asset_id, sha256, purpose, filename,
-         lineage_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    );
-    for (const a of attachments) {
-      insert.run(
-        newId("att"),
-        ticketId,
-        a.asset.id,
-        a.asset.sha256,
-        a.purpose,
-        a.filename,
-        toJson(a.lineage),
-        submittedAt,
-      );
-    }
+    insertTicket(ctx, {
+      ticketId,
+      caseId: caseRow.id,
+      sessionId: session.id,
+      takeId: take.id,
+      snapshot,
+      attachments,
+      idempotencyKey: body.idempotencyKey,
+      submittedAt,
+    });
   });
   const row = getRow<TicketRow>(ctx.db, "SELECT * FROM tickets WHERE id = ?", ticketId)!;
   return { ticket: ticketDto(ctx.db, row, viewerOf(session)), created: true };
+}
+
+export interface TicketInsert {
+  ticketId: string;
+  caseId: string;
+  sessionId: string;
+  /** Null for a ticket a sent story opened (no X2 take). */
+  takeId: string | null;
+  snapshot: TicketSnapshot;
+  attachments: PlannedAttachment[];
+  idempotencyKey: string;
+  submittedAt: string;
+}
+
+/** The one ticket write: the ticket row + its attachment grants. Callers hold the transaction. */
+export function insertTicket(ctx: AppContext, t: TicketInsert): void {
+  ctx.db
+    .prepare(
+      `INSERT INTO tickets (id, case_id, owner_session_id, take_id, queue, status, snapshot_json,
+         idempotency_key, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'submitted', ?, ?, ?, ?)`,
+    )
+    .run(
+      t.ticketId,
+      t.caseId,
+      t.sessionId,
+      t.takeId,
+      SUPPORT_QUEUE_LABEL,
+      toJson(t.snapshot),
+      t.idempotencyKey,
+      t.submittedAt,
+      t.submittedAt,
+    );
+  const insert = ctx.db.prepare(
+    `INSERT INTO ticket_attachments (id, ticket_id, asset_id, sha256, purpose, filename,
+       lineage_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  for (const a of t.attachments) {
+    insert.run(
+      newId("att"),
+      t.ticketId,
+      a.asset.id,
+      a.asset.sha256,
+      a.purpose,
+      a.filename,
+      toJson(a.lineage),
+      t.submittedAt,
+    );
+  }
+}
+
+/**
+ * A sent story on a case with no live ticket opens one through the same ticket write. The caller
+ * runs this inside the transaction that stores the story, so a double click or a retry sees the
+ * first request's ticket and attaches to it instead. Returns null when the case has no live
+ * product reference (the story is then stored without a ticket, as before).
+ */
+export function openStoryTicket(
+  ctx: AppContext,
+  session: SessionInfo,
+  caseRow: CaseRow,
+  storyId: string,
+  beats: StoryBeatsUpload,
+  submittedAt: string,
+): string | null {
+  if (session.role !== "customer") {
+    throw new AppError("FORBIDDEN", "Tickets are sent from a customer's own case.");
+  }
+  const built = buildStorySnapshot({ ctx, caseRow, storyId, beats, submittedAt });
+  if (!built) return null;
+  const ticketId = newId("tkt");
+  insertTicket(ctx, {
+    ticketId,
+    caseId: caseRow.id,
+    sessionId: session.id,
+    takeId: null,
+    snapshot: built.snapshot,
+    attachments: built.attachments,
+    idempotencyKey: `story:${storyId}`,
+    submittedAt,
+  });
+  return ticketId;
 }
 
 /** GET /api/tickets/:ticketId body for an already-authorized viewer. */
