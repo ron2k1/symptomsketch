@@ -83,7 +83,8 @@ Environment variables (root `.env`, read by `apps/server/src/config.ts`; names o
 | `SESSION_SECRET`                                                 | Signs the `ss_session` cookie (random per boot if unset)               |
 | `PORT`, `DATA_DIR`, `APP_ORIGIN`                                 | API port (3030), data folder (`./.data`), allowed origins (comma list) |
 | `GEMINI_TEXT_MODEL`, `GEMINI_CRITIC_MODEL`, `GEMINI_IMAGE_MODEL` | Model overrides                                                        |
-| `GEMINI_THINKING_LEVEL`, `CRITIC_FPS`                            | Planner effort, critic sampling rate                                   |
+| `GEMINI_THINKING_LEVEL`, `CRITIC_FPS`                            | Critic effort (medium), critic sampling rate                           |
+| `GEMINI_PLANNER_THINKING_LEVEL`                                  | Planner effort (low by default)                                        |
 | `MAX_LIVE_SESSIONS`, `MAX_EXPORT_JOBS`, `CASE_RETENTION_DAYS`    | Capacity and retention limits                                          |
 | `ENABLE_EXTENDED_INPUTS`, `FFMPEG_PATH`, `FFPROBE_PATH`          | Optional inputs and tool paths                                         |
 

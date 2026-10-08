@@ -328,6 +328,7 @@ export async function runAssessmentJob(
     return { status: a ? uiStatus(a) : "unavailable" };
   }
   setState(ctx.db, a.id, { job_state: "running" });
+  const started = Date.now();
   try {
     const t = getTakeBinding(ctx.db, a.take_id);
     if (!t || !isBound(a, t) || notCheckable(t)) throw new AssessmentStop("REVIEW_CONFLICT");
@@ -392,7 +393,9 @@ export async function runAssessmentJob(
       result_json: toJson(clip),
       error_code: null,
     });
-    console.log(`[critic] ${a.id} done status=${result.status} latencyMs=${result.latencyMs}`);
+    console.log(
+      `[critic] ${a.id} done status=${result.status} latencyMs=${result.latencyMs} jobMs=${Date.now() - started}`,
+    );
     return { status: result.status };
   } catch (err) {
     const code = failureCode(err);

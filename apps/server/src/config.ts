@@ -39,6 +39,12 @@ const EnvSchema = z.object({
     (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
     z.enum(["low", "medium", "high"]).default("medium"),
   ),
+  // Planner effort. "low" kept the same pick and a valid plan on live Robot vacuum runs while
+  // cutting the call from ~16 s to ~7 s (median of 3 each, 2026-10-08).
+  GEMINI_PLANNER_THINKING_LEVEL: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.enum(["low", "medium", "high"]).default("low"),
+  ),
   CRITIC_FPS: z.preprocess(
     (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
     z.coerce.number().positive().max(60).default(8),
@@ -67,7 +73,9 @@ export interface AppConfig {
   readonly geminiApiKey: string | null;
   readonly geminiTextModel: string;
   readonly geminiCriticModel: string;
+  /** Critic effort (GEMINI_THINKING_LEVEL). */
   readonly geminiThinkingLevel: "low" | "medium" | "high";
+  readonly plannerThinkingLevel: "low" | "medium" | "high";
   readonly criticFps: number;
   readonly enableExtendedInputs: boolean;
   readonly geminiImageModel: string | null;
@@ -125,6 +133,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     geminiTextModel: v.GEMINI_TEXT_MODEL ?? "gemini-3.8-flash",
     geminiCriticModel: v.GEMINI_CRITIC_MODEL ?? "gemini-3.8-flash",
     geminiThinkingLevel: v.GEMINI_THINKING_LEVEL,
+    plannerThinkingLevel: v.GEMINI_PLANNER_THINKING_LEVEL,
     criticFps: v.CRITIC_FPS,
     enableExtendedInputs: v.ENABLE_EXTENDED_INPUTS,
     geminiImageModel: v.GEMINI_IMAGE_MODEL ?? null,
