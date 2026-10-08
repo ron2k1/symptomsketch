@@ -78,6 +78,8 @@ const END_CALL_TIMEOUT_MS = 5_000;
  * both off first); this only bounds when end() resolves, and the disconnect finishes regardless.
  */
 const DISCONNECT_WAIT_MS = 5_000;
+/** The call ends this long before the provider's session hard stop would cut it off. */
+const SESSION_END_MARGIN_S = 10;
 
 const settleWithin = (p: Promise<unknown>, ms: number): Promise<boolean> =>
   Promise.race([
@@ -127,6 +129,8 @@ export class SupportCallController {
   private abort: AbortController | null = null;
   private tick: number | null = null;
   private liveAt: number | null = null;
+  /** max_session_duration_seconds runs from connect, ~55 s before a first call goes live. */
+  private sessionEndsAt: number | null = null;
   private callStarted = false;
   private closing = false;
   private session: ViduS2AvatarSessionStateMessage | null = null;
@@ -167,6 +171,9 @@ export class SupportCallController {
       const model = new ViduS2AvatarModel();
       this.model = model;
       this.listen(model);
+      if (token.maxSessionDurationSeconds > 0) {
+        this.sessionEndsAt = Date.now() + token.maxSessionDurationSeconds * 1000;
+      }
       await model.connect(token.jwt);
       this.ensureOpen(abort.signal);
       if (model.getStatus() !== "ready")
@@ -188,7 +195,11 @@ export class SupportCallController {
       await this.waitFor((s) => s.phase === "live", LIVE_TIMEOUT_MS, "start_call");
       this.ensureOpen(abort.signal);
       this.liveAt = Date.now();
-      this.set({ phase: "live", detail: null });
+      this.set({
+        phase: "live",
+        detail: null,
+        capSeconds: this.capFor(this.session?.call_max_seconds),
+      });
       this.tick = window.setInterval(() => this.onTick(), 500);
     } catch (err) {
       // Closing, or an earlier call ended while this await was pending: nothing left to tear down.
@@ -284,7 +295,7 @@ export class SupportCallController {
     this.session = s;
     for (const wake of [...this.waiters]) wake();
     const patch: Partial<CallView> = {};
-    if (s.call_max_seconds) patch.capSeconds = callCapSeconds(s.call_max_seconds);
+    if (s.call_max_seconds) patch.capSeconds = this.capFor(s.call_max_seconds);
     if (typeof s.call_elapsed_seconds === "number") patch.elapsedSeconds = s.call_elapsed_seconds;
     if (this.callStarted && !this.closing) {
       const phase = phaseFromSession(s.phase, true);
@@ -311,6 +322,14 @@ export class SupportCallController {
     video.muted = false;
     void video.play().catch(() => undefined);
     if (isVideo) this.set({ hasVideo: true });
+  }
+
+  /** callCapSeconds, but never past the session's hard stop (minus a margin) once live. */
+  private capFor(callMaxSeconds: number | null | undefined): number {
+    const cap = callCapSeconds(callMaxSeconds ?? null);
+    if (this.sessionEndsAt === null || this.liveAt === null) return cap;
+    const left = Math.floor((this.sessionEndsAt - this.liveAt) / 1000) - SESSION_END_MARGIN_S;
+    return Math.max(0, Math.min(cap, left));
   }
 
   private waitFor(
@@ -473,6 +492,7 @@ export class SupportCallController {
     this.closing = false;
     this.callStarted = false;
     this.liveAt = null;
+    this.sessionEndsAt = null;
     this.session = null;
     this.lastCommandError = null;
   }

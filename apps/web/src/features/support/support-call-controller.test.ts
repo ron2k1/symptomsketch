@@ -118,7 +118,7 @@ beforeEach(() => {
   sdk.FakeModel.instances.length = 0;
   URL.createObjectURL = () => "blob:portrait";
   URL.revokeObjectURL = () => undefined;
-  api.createSupportCallToken.mockResolvedValue({ jwt: "stub.jwt" });
+  api.createSupportCallToken.mockResolvedValue({ jwt: "stub.jwt", maxSessionDurationSeconds: 300 });
   api.getSupportCallBrief.mockResolvedValue(brief());
   api.fetchSupportCallPortrait.mockResolvedValue({ blob: new Blob(["x"]), source: "composite" });
   api.saveSupportCallAvatar.mockResolvedValue({ ok: true });
@@ -254,5 +254,30 @@ describe("SupportCallController end of call", () => {
     expect(ended).toHaveBeenCalledTimes(1);
     await vi.waitFor(() => expect(model.calls).toContain("disconnect"));
     expect(model.calls).not.toContain("end_call");
+  });
+});
+
+describe("SupportCallController call cap", () => {
+  it("ends the call before the provider's session hard stop", async () => {
+    // The session cap runs from connect; a first call spends ~55 s building the avatar first.
+    api.createSupportCallToken.mockResolvedValue({
+      jwt: "stub.jwt",
+      maxSessionDurationSeconds: 200,
+    });
+    const { controller, view } = setup();
+    await controller.start("tkt_1", () => null);
+    expect(view().phase).toBe("live");
+    expect(view().capSeconds).toBeLessThanOrEqual(190);
+    expect(view().capSeconds).toBeGreaterThanOrEqual(189);
+    sdk.FakeModel.instances[0]!.emit("session", { phase: "live", call_max_seconds: 240 });
+    expect(view().capSeconds).toBeLessThanOrEqual(190);
+    await controller.end();
+  });
+
+  it("keeps the four-minute cap when the session has room for it", async () => {
+    const { controller, view } = setup();
+    await controller.start("tkt_1", () => null);
+    expect(view().capSeconds).toBe(240);
+    await controller.end();
   });
 });
