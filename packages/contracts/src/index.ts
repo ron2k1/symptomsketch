@@ -16,3 +16,4 @@ export * from "./tickets.ts";
 export * from "./support-call.ts";
 export * from "./cases.ts";
 export * from "./api.ts";
+export * from "./story.ts";

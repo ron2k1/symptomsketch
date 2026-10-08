@@ -18,6 +18,7 @@ import { register as reactor } from "./routes/reactor.ts";
 import { register as assessments } from "./routes/assessments.ts";
 import { register as takes } from "./routes/takes.ts";
 import { register as support } from "./support/routes.ts";
+import { register as story } from "./story/routes.ts";
 
 /** Route modules in mount order. Each registers full `/api/...` paths from contracts ROUTES. */
 const MODULES: readonly RegisterRoutes[] = [
@@ -32,6 +33,7 @@ const MODULES: readonly RegisterRoutes[] = [
   assessments,
   takes,
   support,
+  story,
 ];
 
 export interface CreateAppOptions {

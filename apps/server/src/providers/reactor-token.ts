@@ -222,3 +222,6 @@ export async function mintReactorToken(options: MintReactorTokenOptions): Promis
     maxSessions: echoed ?? maxSessions,
   };
 }
+
+/** MiniMax FastH3 (Story mode): text/image -> video with synchronized audio, queue + player. */
+export const FAST_H3_MODEL_RESOURCE = "reactor/fast-h3";

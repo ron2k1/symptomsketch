@@ -13,6 +13,9 @@ import { CallProvider } from "@/features/support/call/CallProvider";
 const CaseWorkspace = lazy(() =>
   import("@/features/workspace/CaseWorkspace").then((m) => ({ default: m.CaseWorkspace })),
 );
+const StoryPage = lazy(() =>
+  import("@/features/story/StoryPage").then((m) => ({ default: m.StoryPage })),
+);
 const SupportInboxPage = lazy(() =>
   import("@/features/support/SupportInboxPage").then((m) => ({ default: m.SupportInboxPage })),
 );
@@ -51,6 +54,7 @@ export function App() {
             <Routes>
               <Route path="/" element={<LandingPage />} />
               <Route path="/cases/:caseId" element={<Navigate to="issue" replace />} />
+              <Route path="/cases/:caseId/story" element={<StoryPage />} />
               <Route path="/cases/:caseId/:tab" element={<CaseWorkspace />} />
               <Route path="/support" element={<SupportInboxPage />} />
               <Route path="/support/tickets/:ticketId" element={<SupportTicketPage />} />

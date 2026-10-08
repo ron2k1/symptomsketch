@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { TellAsStoryButton } from "@/features/story/TellAsStoryButton";
 import { ProcedureForm } from "./ProcedureForm";
 import { ProductPanel } from "./ProductPanel";
 import { currentPlan, isAccountLocked, procedureFor } from "./state";
@@ -174,6 +175,20 @@ export function IssueTab() {
                 {saving || planning ? <LoaderCircle className="animate-spin" aria-hidden /> : null}
                 {planning ? "Understanding the action" : "Continue to Recreate"}
               </Button>
+            ) : null}
+            {caseData.mode === "problem" ? (
+              <TellAsStoryButton
+                caseId={caseData.id}
+                missing={
+                  !caseData.product
+                    ? "Add a product photo first."
+                    : !issue.originalAccount.trim()
+                      ? "Describe what happened first."
+                      : null
+                }
+                save={() => (locked ? Promise.resolve(null) : ws.saveIssueDraft())}
+                onError={setError}
+              />
             ) : null}
           </section>
         ) : null}

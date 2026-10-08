@@ -81,6 +81,9 @@ importers:
       '@reactor-models/x2':
         specifier: ^1.0.0
         version: 1.0.0(react@19.3.0)
+      '@reactor-team/js-sdk':
+        specifier: 3.1.0
+        version: 3.1.0(react@19.3.0)
       '@symptomsketch/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
