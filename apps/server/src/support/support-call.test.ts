@@ -22,10 +22,17 @@ import {
 } from "../providers/gemini-client.ts";
 import { setGeminiFor } from "../providers/planner.ts";
 import { ReactorTokenError } from "../providers/reactor-token.ts";
+import { readdirSync, rmSync } from "node:fs";
+import path from "node:path";
 import sharp from "sharp";
 import type { GenerateImageRequest } from "../providers/nano-banana.ts";
 import { CALL_GROUND_RULES } from "./call-brief.ts";
-import { portraitForCall, setNanoBananaFor, ticketPortrait } from "./call-portrait.ts";
+import {
+  portraitForCall,
+  setNanoBananaFor,
+  ticketPortrait,
+  warmCasePortrait,
+} from "./call-portrait.ts";
 import type { TicketRow } from "./rows.ts";
 import { setSupportCallMinterFor, type SupportCallMintRequest } from "./call-routes.ts";
 import {
@@ -336,8 +343,37 @@ function ticketRow(id: string): TicketRow {
   return getRow<TicketRow>(h.ctx.db, "SELECT * FROM tickets WHERE id = ?", id)!;
 }
 
+/** Every ticket here shares aliceCase's photo, so a test that needs a fresh generation clears it. */
+function clearSharedComposites(): void {
+  const dir = path.join(h.ctx.paths.root, "media", "support-agents");
+  let names: string[] = [];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return;
+  }
+  for (const name of names) if (name.startsWith("ref-")) rmSync(path.join(dir, name));
+}
+
+test("portrait: case creation starts the composite and the ticket reuses that same result", async () => {
+  useStubImages();
+  clearSharedComposites();
+  const before = imageRequests.length;
+  warmCasePortrait(h.ctx, aliceCase.caseId);
+  assert.equal(imageRequests.length, before + 1, "generation starts before any ticket exists");
+  const ticket = await submitTicket();
+  const res = await call(h.base, "GET", paths.ticketSupportCallPortrait(ticket.id), {
+    cookie: alice.cookie,
+  });
+  assert.equal(res.res.headers.get("x-portrait-source"), "composite");
+  const second = await submitTicket();
+  assert.equal((await ticketPortrait(h.ctx, ticketRow(second.id))).source, "composite");
+  assert.equal(imageRequests.length, before + 1, "the same photo is never generated twice");
+});
+
 test("portrait: Nano Banana composites the agent with the ticket's product, cached per ticket", async () => {
   useStubImages();
+  clearSharedComposites();
   const before = imageRequests.length;
   const ticket = await submitTicket();
   assert.equal(imageRequests.length, before + 1, "generation starts when the ticket is sent");
@@ -369,6 +405,7 @@ test("portrait: Nano Banana composites the agent with the ticket's product, cach
 
 test("portrait: a timeout serves the base portrait and the next call tries again", async () => {
   useStubImages();
+  clearSharedComposites();
   imageFails = "ASSESSMENT_FAILED";
   try {
     const ticket = await submitTicket();
@@ -392,6 +429,7 @@ test("portrait: a timeout serves the base portrait and the next call tries again
 
 test("portrait: a blocked composite keeps the base portrait and is not retried", async () => {
   useStubImages();
+  clearSharedComposites();
   imageFails = "PROVIDER_BLOCKED";
   try {
     const ticket = await submitTicket();
@@ -413,6 +451,7 @@ test("portrait: a blocked composite keeps the base portrait and is not retried",
 
 test("portrait: a slow composite serves base now and is cached for the next call", async () => {
   useStubImages();
+  clearSharedComposites();
   let release!: () => void;
   imageGate = new Promise<void>((resolve) => {
     release = resolve;

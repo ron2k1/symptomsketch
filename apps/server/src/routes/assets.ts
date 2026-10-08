@@ -30,6 +30,7 @@ import { requireSession } from "../http/session.ts";
 import { param, parseBody } from "../http/validate.ts";
 import { resolveStoragePath } from "../media/files.ts";
 import { ImageRejectedError } from "../media/image.ts";
+import { warmCasePortrait } from "../support/call-portrait.ts";
 
 /**
  * POST /api/cases/:id/assets             multipart `file` -> UploadAssetResult (new current reference)
@@ -149,6 +150,7 @@ export function register(router: Router, ctx: AppContext): void {
       }
       return { product: productResponse(ctx, caseRow.id, revision.id) };
     });
+    warmCasePortrait(ctx, caseRow.id);
     res.status(201).json(body);
   });
 

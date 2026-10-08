@@ -12,6 +12,7 @@ import { createCase, getOwnedCase, patchCase } from "../domain/cases.ts";
 import { deleteCase, registerCaseCleanupJob, startRetentionSweep } from "../domain/lifecycle.ts";
 import { requireCustomerAccess, requireSession } from "../http/session.ts";
 import { param, parseBody } from "../http/validate.ts";
+import { warmCasePortrait } from "../support/call-portrait.ts";
 
 /**
  * POST   /api/cases      CreateCaseRequest -> CaseResponse (201; 200 for an idempotent repeat)
@@ -28,6 +29,8 @@ export function register(router: Router, ctx: AppContext): void {
     const session = requireCustomerAccess(req);
     const input = parseBody(CreateCaseRequest, req);
     const { caseRow, created } = await createCase(ctx, session, input);
+    // A fixture case has its product photo now: start Sam's composite before any ticket exists.
+    if (created) warmCasePortrait(ctx, caseRow.id);
     const body: CaseResponse = { case: buildCaseDetail(ctx, caseRow) };
     res.status(created ? 201 : 200).json(body);
   });

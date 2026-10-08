@@ -34,7 +34,7 @@ const SUMMARY_MAX_CHARS = 800;
 let catalogNames: Map<string, string> | null = null;
 
 /** Fixture display names from assets/demo/catalog.json (cached; empty map if unreadable). */
-function fixtureName(ctx: AppContext, fixtureId: string | null): string | null {
+export function fixtureName(ctx: AppContext, fixtureId: string | null): string | null {
   if (!fixtureId) return null;
   if (!catalogNames) {
     catalogNames = new Map();
