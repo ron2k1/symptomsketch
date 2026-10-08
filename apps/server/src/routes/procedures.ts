@@ -30,7 +30,8 @@ export function register(router: Router, ctx: AppContext): void {
     let steps = input.steps?.map((s) => s.trim()).filter(Boolean) ?? splitSteps(approvedText);
     let procedureCode = input.procedureCode?.trim() || null;
     let sourceDescription = input.sourceDescription.trim();
-    let confirmed = input.modelApplicabilityConfirmed;
+    // Always the user's own checkbox answer, also for the disclosed demo procedure text.
+    const confirmed = input.modelApplicabilityConfirmed;
     if (input.fixtureProcedureId) {
       const fixture = findFixtureProcedure(ctx.config.demoAssetsDir, input.fixtureProcedureId);
       if (!fixture || fixture.fixtureId !== kase.fixture_id) {
@@ -42,7 +43,6 @@ export function register(router: Router, ctx: AppContext): void {
       steps = [...f.steps];
       procedureCode = f.procedureId;
       sourceDescription = f.source;
-      confirmed = true;
     }
     if (steps.length === 0) {
       throw new AppError("VALIDATION_FAILED", "The procedure needs at least one step.");

@@ -199,7 +199,7 @@ test("blocking clarification -> needs_clarification, no prompt, no Reactor token
   assert.equal(tok.status, 409);
 });
 
-test("solution plan needs an approved procedure; fixture procedure prefill confirms applicability", async () => {
+test("solution plan needs an approved procedure; fixture procedure keeps the user's applicability answer", async () => {
   const b = await loggedIn(h);
   const caseId = await newCase(b, "solution");
   const early = await plan(h, b, caseId, { purpose: "solution" });
@@ -213,7 +213,20 @@ test("solution plan needs an approved procedure; fixture procedure prefill confi
     fixtureProcedureId: "SS-DEMO-RV-01",
   });
   assert.equal(proc.status, 201);
-  const p = ((await proc.json()) as CreateProcedureResponse).procedure;
+  const unconfirmed = ((await proc.json()) as CreateProcedureResponse).procedure;
+  assert.equal(unconfirmed.modelApplicabilityConfirmed, false);
+  const blocked = await plan(h, b, caseId, { purpose: "solution" });
+  assert.equal(blocked.status, 400);
+  h.replies = [];
+  const confirmedRes = await b.json(`/api/cases/${caseId}/procedures`, "POST", {
+    title: "x",
+    approvedText: "x",
+    sourceDescription: "x",
+    modelApplicabilityConfirmed: true,
+    fixtureProcedureId: "SS-DEMO-RV-01",
+  });
+  assert.equal(confirmedRes.status, 201);
+  const p = ((await confirmedRes.json()) as CreateProcedureResponse).procedure;
   assert.equal(p.modelApplicabilityConfirmed, true);
   assert.ok(p.steps.length > 0);
   const res = await plan(h, b, caseId, { purpose: "solution" }, plannerOut({ spans: [] }));
