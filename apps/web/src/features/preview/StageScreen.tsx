@@ -1,7 +1,8 @@
-import type { ReactNode, RefObject } from "react";
+import { useState, type ReactNode, type RefObject } from "react";
 import { LoaderCircle, TriangleAlert } from "lucide-react";
 import { formatDuration, formatTakeNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { STAGE_HEIGHT, STAGE_WIDTH, stageFit } from "./geometry";
 
 export interface StageScreenProps {
   videoRef: RefObject<HTMLVideoElement | null>;
@@ -123,13 +124,22 @@ export function StageScreen(p: StageScreenProps) {
   );
 }
 
+/** The reference photo framed by stageFit, so it lines up with the X2 source canvas. */
 function Still({ src, alt }: { src: string; alt: string }) {
+  const [fit, setFit] = useState<"cover" | "contain">("contain");
   return (
     <img
-      className="absolute inset-0 h-full w-full bg-background object-contain"
+      className={cn(
+        "absolute inset-0 h-full w-full bg-background",
+        fit === "cover" ? "object-cover" : "object-contain",
+      )}
       src={src}
       alt={alt}
       draggable={false}
+      onLoad={(event) => {
+        const { naturalWidth, naturalHeight } = event.currentTarget;
+        setFit(stageFit(naturalWidth, naturalHeight, STAGE_WIDTH, STAGE_HEIGHT));
+      }}
     />
   );
 }

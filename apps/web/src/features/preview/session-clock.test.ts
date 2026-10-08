@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { containRect, stageRect } from "./geometry";
+import { containRect, stageFit, stageRect } from "./geometry";
 import { evaluateSessionClock } from "./session-clock";
 
 describe("evaluateSessionClock (spec 8: 90 s idle, 5 min max)", () => {
@@ -65,5 +65,13 @@ describe("stageRect", () => {
   it("keeps a portrait photo letterboxed so the product is not cropped away", () => {
     const r = stageRect(1200, 1600, 1280, 720);
     expect(r).toEqual(containRect(1200, 1600, 1280, 720));
+  });
+});
+
+describe("stageFit", () => {
+  it("names the same fit stageRect draws, so the DOM still matches the X2 canvas", () => {
+    expect(stageFit(1600, 1067, 1280, 720)).toBe("cover");
+    expect(stageFit(1200, 1600, 1280, 720)).toBe("contain");
+    expect(stageFit(0, 0, 1280, 720)).toBe("contain");
   });
 });

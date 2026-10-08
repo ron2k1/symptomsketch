@@ -40,9 +40,22 @@ export const STAGE_MAX_TRIM = 0.2;
  * Anything that would lose more (portrait phone photos) stays contain-fit so the product survives.
  */
 export function stageRect(srcW: number, srcH: number, dstW: number, dstH: number): Rect {
+  return stageFit(srcW, srcH, dstW, dstH) === "cover"
+    ? coverRect(srcW, srcH, dstW, dstH)
+    : containRect(srcW, srcH, dstW, dstH);
+}
+
+/** The CSS object-fit matching stageRect, so a DOM still frames exactly like the X2 canvas. */
+export function stageFit(
+  srcW: number,
+  srcH: number,
+  dstW: number,
+  dstH: number,
+): "cover" | "contain" {
+  if (srcW <= 0 || srcH <= 0) return "contain";
   const cover = coverRect(srcW, srcH, dstW, dstH);
   const trim = 1 - Math.min(dstW / cover.w, dstH / cover.h);
-  return trim <= STAGE_MAX_TRIM ? cover : containRect(srcW, srcH, dstW, dstH);
+  return trim <= STAGE_MAX_TRIM ? "cover" : "contain";
 }
 
 /** A decoded still with known pixel size (ImageBitmap or a loaded HTMLImageElement). */
