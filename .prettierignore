@@ -5,3 +5,4 @@ tmp/
 reference/
 apps/web/src/components/ui/*.tsx
 !apps/web/src/components/ui/modern-hero.tsx
+.claude/worktrees/
