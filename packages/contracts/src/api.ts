@@ -36,6 +36,11 @@
  * | GET    /api/tickets/:ticketId/attachments/:assetId/media    | -        | bytes (Range)            |
  * | GET    /api/tickets/:ticketId/attachments/:assetId/download | -        | bytes (attachment)       |
  * | GET    /api/support/tickets             | -                               | SupportInboxResponse     |
+ * | POST   /api/tickets/:ticketId/support-call/token       | -                | SupportCallTokenResponse |
+ * | POST   /api/tickets/:ticketId/support-call/brief       | -                | SupportCallBriefResponse |
+ * | GET    /api/tickets/:ticketId/support-call/portrait    | -                | image/jpeg bytes         |
+ * | PUT    /api/tickets/:ticketId/support-call/avatar      | SaveSupportCallAvatarRequest | OkResponse  |
+ * | POST   /api/tickets/:ticketId/support-call/transcripts | CreateSupportCallTranscriptRequest | SupportCallTranscript (201) |
  * Errors: every non-2xx body is ApiError { code, message }.
  */
 
@@ -69,6 +74,11 @@ export const ROUTES = {
   ticketAttachmentMedia: "/api/tickets/:ticketId/attachments/:assetId/media",
   ticketAttachmentDownload: "/api/tickets/:ticketId/attachments/:assetId/download",
   supportTickets: "/api/support/tickets",
+  ticketSupportCallToken: "/api/tickets/:ticketId/support-call/token",
+  ticketSupportCallBrief: "/api/tickets/:ticketId/support-call/brief",
+  ticketSupportCallPortrait: "/api/tickets/:ticketId/support-call/portrait",
+  ticketSupportCallAvatar: "/api/tickets/:ticketId/support-call/avatar",
+  ticketSupportCallTranscripts: "/api/tickets/:ticketId/support-call/transcripts",
 } as const;
 export type RouteName = keyof typeof ROUTES;
 
@@ -106,6 +116,13 @@ export const paths = {
   ticketAttachmentDownload: (ticketId: string, assetId: string) =>
     `/api/tickets/${e(ticketId)}/attachments/${e(assetId)}/download`,
   supportTickets: () => ROUTES.supportTickets,
+  ticketSupportCallToken: (ticketId: string) => `/api/tickets/${e(ticketId)}/support-call/token`,
+  ticketSupportCallBrief: (ticketId: string) => `/api/tickets/${e(ticketId)}/support-call/brief`,
+  ticketSupportCallPortrait: (ticketId: string) =>
+    `/api/tickets/${e(ticketId)}/support-call/portrait`,
+  ticketSupportCallAvatar: (ticketId: string) => `/api/tickets/${e(ticketId)}/support-call/avatar`,
+  ticketSupportCallTranscripts: (ticketId: string) =>
+    `/api/tickets/${e(ticketId)}/support-call/transcripts`,
 } as const;
 
 /** Browser routes (react-router). */

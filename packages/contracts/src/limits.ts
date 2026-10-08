@@ -62,6 +62,22 @@ export const LIMITS = {
   criticInlineMaxBytes: 20_000_000,
   criticDefaultFps: 8,
 
+  // Live AI support agent call (Reactor Vidu S2 Avatar)
+  /** JWT lifetime for the avatar session (seconds). */
+  supportCallTokenExpiresSeconds: 600,
+  /** Provider-side hard stop per avatar session (seconds). */
+  supportCallSessionMaxSeconds: 300,
+  /** Client-side cap on one call; billing runs from session ready, so stay short. */
+  supportCallClientMaxMs: 4 * 60_000,
+  supportCallPersonaMaxChars: 6_000,
+  supportCallGreetingMaxChars: 200,
+  /** say() accepts 1-2000 chars; the typed box stays shorter. */
+  supportCallSayMaxChars: 500,
+  supportCallLineMaxChars: 2_000,
+  supportCallTranscriptMaxLines: 400,
+  /** Per-ticket Nano Banana composite budget before falling back to the base portrait. */
+  supportCallPortraitTimeoutMs: 25_000,
+
   // Persistence (spec 14)
   caseRetentionDays: 7,
   sessionTtlDays: 7,

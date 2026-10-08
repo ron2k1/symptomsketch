@@ -10,6 +10,7 @@ import {
   Timestamp,
 } from "./common.ts";
 import { LIMITS } from "./limits.ts";
+import { SupportCallTranscript } from "./support-call.ts";
 
 export const TicketStatus = z.enum(["submitted", "replied", "revoked"]);
 export type TicketStatus = z.infer<typeof TicketStatus>;
@@ -87,6 +88,8 @@ export const Ticket = z.object({
   replies: z.array(TicketReply),
   /** Agent work cases created from this ticket (visible to support only; [] for customers). */
   workCaseIds: z.array(Id),
+  /** Live AI support agent call transcripts, oldest first (support only; additive field). */
+  aiCallTranscripts: z.array(SupportCallTranscript).optional(),
   createdAt: Timestamp,
   updatedAt: Timestamp,
 });

@@ -129,13 +129,18 @@ export function updateLease(
 
 // ---- per-session usage limits (in memory, sliding window) ----
 
-export type UsageKind = "reactorToken" | "plan" | "critic";
+export type UsageKind =
+  "reactorToken" | "plan" | "critic" | "avatarToken" | "supportCallBrief" | "supportCallPortrait";
 
 /** Per-session caps per rolling hour. Paid calls only; failures still count (spec 8). */
 export const USAGE_LIMITS: Record<UsageKind, { max: number; windowMs: number }> = {
   reactorToken: { max: 20, windowMs: 60 * 60_000 },
   plan: { max: 60, windowMs: 60 * 60_000 },
   critic: { max: 30, windowMs: 60 * 60_000 },
+  // Live AI support agent call: billed from session ready, so tighter than the X2 preview.
+  avatarToken: { max: 10, windowMs: 60 * 60_000 },
+  supportCallBrief: { max: 10, windowMs: 60 * 60_000 },
+  supportCallPortrait: { max: 6, windowMs: 60 * 60_000 },
 };
 
 export class UsageLimiter {
