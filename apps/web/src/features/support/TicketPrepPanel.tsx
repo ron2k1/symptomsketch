@@ -17,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { createTicket, errorMessage, getTakeMessage, isApiClientError } from "@/lib/api";
 import { formatBytes, formatDuration, formatTakeNumber, formatTimestamp } from "@/lib/format";
 import { ExportActions } from "./ExportActions";
-import { shortHash } from "./labels";
+import { SUPPORT_SEND_BUTTON_ID, shortHash } from "./labels";
 import { emailText } from "./model";
 import { useIdempotencyKey } from "./useIdempotencyKey";
 import { useSessionDraft } from "./useSessionDraft";
@@ -300,6 +300,7 @@ export function TicketPrepPanel(props: TicketPrepPanelProps) {
             </p>
           ) : null}
           <Button
+            id={SUPPORT_SEND_BUTTON_ID}
             type="button"
             className="min-h-11 self-start"
             onClick={() => void onSend()}

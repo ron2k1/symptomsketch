@@ -113,15 +113,68 @@ describe("CustomerSupportTab", () => {
     expect(writeText).toHaveBeenCalledWith(`Subject: ${MESSAGE.subject}\n\n${MESSAGE.body}`);
   });
 
-  it("prompts Recreate instead of sending when the selected take is not accepted", () => {
+  it("opens the selected take in Recreate instead of sending when it is not accepted", () => {
     mockApi({});
     renderTab({
       caseData: fixtureCase({ takes: [fixtureTake({ reviewState: "uncertain" })] }),
     });
     expect(screen.queryByRole("button", { name: /Send to Demo Support/ })).toBeNull();
-    expect(screen.getByRole("link", { name: /Go to Recreate/ }).getAttribute("href")).toBe(
+    const links = screen.getAllByRole("link", { name: "Open Take 02 in Recreate" });
+    expect(links.map((l) => l.getAttribute("href"))).toEqual([
+      "/cases/case_1/recreate?take=take_a",
+      "/cases/case_1/recreate?take=take_a",
+    ]);
+  });
+
+  it("offers the newest saved take, or plain Recreate, when nothing is accepted or selected", () => {
+    mockApi({});
+    renderTab({
+      selectedTakeId: null,
+      caseData: fixtureCase({
+        takes: [
+          fixtureTake({ id: "take_u", number: 3, reviewState: "unreviewed" }),
+          fixtureTake({ id: "take_old", number: 1, reviewState: "rejected" }),
+        ],
+      }),
+    });
+    expect(screen.getByText(/Take 03 is saved/)).toBeTruthy();
+    expect(
+      screen.getAllByRole("link", { name: "Open Take 03 in Recreate" })[0]?.getAttribute("href"),
+    ).toBe("/cases/case_1/recreate?take=take_u");
+    cleanup();
+
+    renderTab({ selectedTakeId: null, caseData: fixtureCase({ takes: [] }) });
+    expect(screen.getAllByRole("link", { name: /Go to Recreate/ })[0]?.getAttribute("href")).toBe(
       "/cases/case_1/recreate",
     );
+  });
+
+  it("explains Sam needs a ticket and offers the next step, including Story mode", async () => {
+    mockApi({ "GET /api/takes/take_a/message": () => ({ status: 200, body: MESSAGE }) });
+    renderTab();
+    expect(screen.getByRole("heading", { name: /Talk to Sam/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Talk to support now/ })).toBeNull();
+    expect(screen.getByRole("link", { name: "Tell it as a story" }).getAttribute("href")).toBe(
+      "/cases/case_1/story",
+    );
+    const send = screen.getByRole("button", { name: /^Send to Demo Support/ });
+    await waitFor(() => expect((send as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Review and send Take 02" }));
+    expect(document.activeElement).toBe(send);
+  });
+
+  it("lets the visitor pick the newest accepted take from the call card", () => {
+    mockApi({});
+    const onSelectTake = vi.fn();
+    renderTab({
+      selectedTakeId: null,
+      onSelectTake,
+      caseData: fixtureCase({ originalAccount: "" }),
+    });
+    expect(screen.queryByRole("link", { name: "Tell it as a story" })).toBeNull();
+    const use = screen.getAllByRole("button", { name: "Use Take 02" });
+    fireEvent.click(use[use.length - 1]!);
+    expect(onSelectTake).toHaveBeenCalledWith("take_a");
   });
 
   it("shows actual replies with their playable attachment from the ticket thread", async () => {
