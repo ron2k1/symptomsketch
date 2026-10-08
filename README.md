@@ -8,9 +8,9 @@ on-stage part in about 20 seconds.
 Before (about 1 minute, off stage):
 
 1. Open the deployed URL (or `pnpm install && pnpm dev`, then http://127.0.0.1:5173).
-2. Pick Robot vacuum and enter the demo access code. The Issue box is prefilled with the demo's
-   example, "It stops, then jerks backward once." Press Continue to Recreate; Gemini writes the
-   movement plan.
+2. Pick Robot vacuum and enter the demo access code. Type what happened in the Issue box (the
+   placeholder shows an example; Continue stays disabled until you type). Press Continue to
+   Recreate; Gemini writes the movement plan.
 3. Press Start preview. The stage badge reads "Live · Reactor X2" and the stage takes the full
    width. Leave it running: generation is continuous while the stage is live.
 
@@ -100,17 +100,15 @@ Support:
 ## How the motion is generated
 
 Every moving frame comes from Reactor X2. The server compiles the Gemini plan into an X2 prompt, and
-the browser streams the product photo to X2 as its source. For the robot vacuum demo photo the app
-also animates that source (a motion sketch): the vacuum is cut out, the hole is covered with a
-clean plate of rug, and the cutout slides along the planned direction while `setPointer` follows
-the same path. X2 renders the result; the sketch only guides it. Lab results and the full mechanism
-are in `docs/providers/reactor-x2.md` section 9. Nothing on screen is a stock clip or fixture.
+the browser streams the product photo to X2 as its source, unchanged. The source-canvas motion
+sketch (`docs/providers/reactor-x2.md` section 9) is switched off: it relied on a product region
+measured by hand for the robot vacuum photo, so it is disabled until the region comes from a live
+Gemini call. Nothing on screen is a stock clip or fixture.
 
 ## Known limitations
 
-- The motion sketch only runs for the robot vacuum demo photo, the one still with a measured product
-  region. Uploaded photos and the fan and drone demos use the prompt alone, which tends to give
-  in-place changes rather than travel.
+- Every photo, the demos included, is driven by the prompt alone, which tends to give in-place
+  changes rather than travel.
 - Rotations, lights and parts opening get no sketch. The live output trails the source by 1 to 3 s
   and often moves as a creep followed by a step.
 - The critic often returns uncertain when the clip starts at rest (it cannot see the "after
