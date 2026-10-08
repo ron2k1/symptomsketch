@@ -136,9 +136,13 @@ export function updateLease(
 
 export type UsageKind = "reactorToken" | "plan" | "critic";
 
-/** Per-session caps per rolling hour. Paid calls only; failures still count (spec 8). */
+/**
+ * Per-session caps per rolling hour. Paid calls only; failures still count (spec 8). An endless
+ * preview rotates its token every 4:40, about 13 tokens an hour on its own, so the token cap leaves
+ * room for Stop/Start, drop reconnects and rehearsals on top of that.
+ */
 export const USAGE_LIMITS: Record<UsageKind, { max: number; windowMs: number }> = {
-  reactorToken: { max: 20, windowMs: 60 * 60_000 },
+  reactorToken: { max: 40, windowMs: 60 * 60_000 },
   plan: { max: 60, windowMs: 60 * 60_000 },
   critic: { max: 30, windowMs: 60 * 60_000 },
 };
