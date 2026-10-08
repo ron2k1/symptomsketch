@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Film, Plus } from "lucide-react";
 import { takeShelfLabel, type Take, type TakeShelfLabel } from "@symptomsketch/contracts";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,8 @@ interface TakeShelfProps {
   onSelect(id: string): void;
   onNewTake(): void;
   disabled: boolean;
+  /** Optional action under each take card (the customer's one-click send to support). */
+  renderAction?(take: Take): ReactNode;
 }
 
 /** Saved takes beneath the stage. The live scene is never shown here (spec 6 take shelf). */
@@ -30,6 +33,7 @@ export function TakeShelf({
   onSelect,
   onNewTake,
   disabled,
+  renderAction,
 }: TakeShelfProps) {
   return (
     <section aria-labelledby="takes-heading" className="space-y-3">
@@ -95,6 +99,7 @@ export function TakeShelf({
                     {take.caption}
                   </span>
                 </button>
+                {renderAction?.(take)}
               </li>
             );
           })}

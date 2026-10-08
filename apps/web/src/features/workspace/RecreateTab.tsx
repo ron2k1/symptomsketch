@@ -28,6 +28,7 @@ import {
   procedureFor,
   takesFor,
 } from "./state";
+import { SendTakeButton } from "./SendTakeButton";
 import { TakeShelf } from "./TakeShelf";
 import { useWorkspace } from "./WorkspaceProvider";
 
@@ -283,6 +284,19 @@ export function RecreateTab() {
           }}
           onNewTake={onNewTake}
           disabled={captureBusy}
+          renderAction={
+            isSupportCase
+              ? undefined
+              : (take) => (
+                  <SendTakeButton
+                    caseId={caseData.id}
+                    take={take}
+                    sent={caseData.tickets.some(
+                      (t) => t.takeId === take.id && t.status !== "revoked",
+                    )}
+                  />
+                )
+          }
         />
       </div>
     </div>
