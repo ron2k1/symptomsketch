@@ -14,8 +14,11 @@ const h = vi.hoisted(() => {
     connect = vi.fn(async () => undefined);
     prepareRun = vi.fn(async () => undefined);
     fire = vi.fn(async () => ++this.currentRunId);
-    restartRun = vi.fn(async (_reference: Blob, _prompt: string) => ++this.currentRunId);
+    restartRun = vi.fn(
+      async (_reference: Blob, _prompt: string, _action?: unknown) => ++this.currentRunId,
+    );
     correct = vi.fn(async (_prompt: string, _action?: unknown) => true);
+    sketches = vi.fn((_action: unknown) => this.motionProgram !== null);
     close = vi.fn(async () => {
       this.isClosed = true;
     });
@@ -74,6 +77,7 @@ const { STAGE_ERRORS, STOP_NOTICES } = await import("./preview-errors");
 const { LIVE_COPY } = await import("./live-policy");
 const { EMPTY_STATS } = await import("./x2-stats");
 const { ApiClientError } = await import("@/lib/api");
+const { PreviewFailure } = await import("./x2-preview");
 
 function plan(id: string, prompt: string): PlanRevision {
   return {
@@ -390,26 +394,74 @@ describe("PreviewController (infinite live preview)", () => {
     expect(h.createReactorToken).toHaveBeenCalledTimes(1);
   });
 
-  it("Replay movement replays the sketch through the correction path on the same session", async () => {
+  it("Replay movement on a sketched product restarts the run instead of replaying mid-run", async () => {
     const { c, preview } = await startLive();
     preview.motionProgram = { steps: [] }; // a motion sketch drives this plan
-    const since = c.current.outputSince;
     c.replayMovement();
     await vi.advanceTimersByTimeAsync(0);
-    expect(preview.correct).toHaveBeenCalledWith("server compiled prompt one", null);
-    expect(c.current.status).toBe("updating");
-    preview.frame(2);
+    // Mid-run, X2 kept the product in place and drew a ghost copy: replay is a fresh run.
+    expect(preview.correct).not.toHaveBeenCalled();
+    expect(preview.restartRun).toHaveBeenCalledWith(
+      expect.any(Blob),
+      "server compiled prompt one",
+      null,
+    );
+    expect(c.current).toMatchObject({ status: "updating", outputSince: null });
+    preview.frame(2, true);
     await vi.advanceTimersByTimeAsync(0);
-    expect(c.current).toMatchObject({ status: "live", activePlanId: "plan_1", outputSince: since });
+    preview.frame(3);
+    expect(c.current).toMatchObject({ status: "live", activePlanId: "plan_1" });
+    expect(c.current.outputSince).toBe(performance.now());
     expect(h.createReactorToken).toHaveBeenCalledTimes(1);
     expect(preview.close).not.toHaveBeenCalled();
+  });
+
+  it("a new plan on a sketched product restarts the run with the new movement", async () => {
+    const { c, preview } = await startLive();
+    preview.motionProgram = { steps: [] };
+    c.setProps({ caseId: "case_1", plan: plan("plan_2", "prompt two"), referenceImageUrl: "/ref" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(preview.correct).not.toHaveBeenCalled();
+    expect(preview.restartRun).toHaveBeenCalledWith(expect.any(Blob), "prompt two", null);
+    expect(c.current).toMatchObject({ activePlanId: "plan_2", outputSince: null });
+    preview.frame(2, true);
+    await vi.advanceTimersByTimeAsync(0);
+    preview.frame(3);
+    expect(c.current.status).toBe("live");
+    expect(c.current.outputSince).toBe(performance.now());
+
+    // Replay now repeats the new plan's prompt.
+    c.replayMovement();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(preview.restartRun).toHaveBeenLastCalledWith(expect.any(Blob), "prompt two", null);
+  });
+
+  it("a sketched restart X2 declines brings the previous movement back and says so", async () => {
+    const { c, preview } = await startLive();
+    preview.motionProgram = { steps: [] };
+    preview.restartRun.mockRejectedValueOnce(new PreviewFailure("invalid_command", "prompt"));
+    c.setProps({ caseId: "case_1", plan: plan("plan_2", "prompt two"), referenceImageUrl: "/ref" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(preview.restartRun.mock.calls.map((call) => call[1])).toEqual([
+      "prompt two",
+      "server compiled prompt one",
+    ]);
+    expect(c.current.notice).toMatch(/did not accept/);
+    preview.frame(2, true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(c.current).toMatchObject({ status: "live", activePlanId: "plan_1" });
+    expect(h.createReactorToken).toHaveBeenCalledTimes(1);
   });
 
   it("Replay movement on a static still restarts the run on the same connection", async () => {
     const { c, preview } = await startLive();
     c.replayMovement();
     await vi.advanceTimersByTimeAsync(0);
-    expect(preview.restartRun).toHaveBeenCalledWith(expect.any(Blob), "server compiled prompt one");
+    expect(preview.restartRun).toHaveBeenCalledWith(
+      expect.any(Blob),
+      "server compiled prompt one",
+      null,
+    );
     expect(c.current).toMatchObject({ status: "updating", outputSince: null });
     preview.frame(2, true);
     await vi.advanceTimersByTimeAsync(0);
