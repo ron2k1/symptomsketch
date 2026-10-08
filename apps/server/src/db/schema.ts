@@ -292,6 +292,17 @@ CREATE TABLE idempotency_keys (
   PRIMARY KEY (scope, session_id, key)
 );
 `,
+  /* 2: live AI support agent call, per-ticket cache (call package + saved Reactor avatar id) */ `
+CREATE TABLE ticket_support_calls (
+  ticket_id TEXT PRIMARY KEY REFERENCES tickets(id) ON DELETE CASCADE,
+  persona TEXT,
+  greeting TEXT,
+  brief_model_id TEXT,
+  avatar_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`,
 ];
 
 /** Apply pending migrations inside one transaction each. Returns the resulting schema version. */

@@ -5,13 +5,22 @@ import { after, before, test } from "node:test";
 import {
   paths,
   SUPPORT_CALL_MODEL,
+  SUPPORT_CALL_PERSONA_OPENER,
   type SessionState,
+  type SupportCallBriefResponse,
   type SupportCallTokenResponse,
   type Ticket,
   type TicketResponse,
 } from "@symptomsketch/contracts";
 import { getRow } from "../db/index.ts";
+import {
+  createGeminiClient,
+  type InteractionLike,
+  type InteractionRequest,
+} from "../providers/gemini-client.ts";
+import { setGeminiFor } from "../providers/planner.ts";
 import { ReactorTokenError } from "../providers/reactor-token.ts";
+import { CALL_GROUND_RULES } from "./call-brief.ts";
 import { setSupportCallMinterFor, type SupportCallMintRequest } from "./call-routes.ts";
 import {
   SUPPORT_CODE,
@@ -33,6 +42,15 @@ let aliceCase: SeededCase;
 let seq = 0;
 const mints: SupportCallMintRequest[] = [];
 let mintFails: ReactorTokenError | null = null;
+const briefRequests: InteractionRequest[] = [];
+let briefReply: () => InteractionLike = () => ({
+  status: "completed",
+  model: "stub-text-model",
+  output_text: JSON.stringify({
+    persona: `${SUPPORT_CALL_PERSONA_OPENER} helping with a robot vacuum that jerks backward.`,
+    greeting: "Hi, I'm Sam, an AI support agent. I watched your clip. When does it jerk backward?",
+  }),
+});
 
 before(async () => {
   h = await startHarness();
@@ -48,6 +66,18 @@ before(async () => {
     if (mintFails) throw mintFails;
     return { jwt: "stub.avatar.jwt", expiresAt: new Date(Date.now() + 600_000).toISOString() };
   });
+  setGeminiFor(
+    h.ctx,
+    createGeminiClient({
+      apiKey: null,
+      transport: {
+        create: async (request) => {
+          briefRequests.push(request);
+          return briefReply();
+        },
+      },
+    }),
+  );
 });
 
 after(async () => {
@@ -144,4 +174,91 @@ test("the avatar token is rate-limited per session", async () => {
   }
   assert.deepEqual(statuses.slice(0, 10), Array(10).fill(200));
   assert.equal(statuses[10], 429);
+});
+
+test("brief: Gemini writes the call package once per ticket from the case facts", async () => {
+  const ticket = await submitTicket();
+  const before = briefRequests.length;
+  const first = await call<SupportCallBriefResponse>(
+    h.base,
+    "POST",
+    paths.ticketSupportCallBrief(ticket.id),
+    { cookie: alice.cookie },
+  );
+  assert.equal(first.status, 200);
+  const pkg = first.body.package;
+  assert.ok(pkg.persona.startsWith(SUPPORT_CALL_PERSONA_OPENER));
+  assert.ok(pkg.persona.endsWith(CALL_GROUND_RULES), "server appends the fixed ground rules");
+  assert.ok(pkg.greeting.length <= 200);
+  assert.equal(first.body.modelId, "stub-text-model");
+  assert.equal(first.body.avatarId, null);
+  assert.equal(first.body.portraitUrl, paths.ticketSupportCallPortrait(ticket.id));
+  assert.equal(briefRequests.length, before + 1);
+  const sent = JSON.stringify(briefRequests.at(-1)!.input);
+  assert.match(sent, /It stops then jerks backward once\./);
+  assert.match(sent, /cause unknown/);
+  assert.match(sent, /Appears consistent with one backward movement\./);
+
+  const again = await call<SupportCallBriefResponse>(
+    h.base,
+    "POST",
+    paths.ticketSupportCallBrief(ticket.id),
+    { cookie: support.cookie },
+  );
+  assert.equal(again.status, 200);
+  assert.deepEqual(again.body.package, pkg);
+  assert.equal(briefRequests.length, before + 1, "cached: no second Gemini call");
+
+  const stranger = await call(h.base, "POST", paths.ticketSupportCallBrief(ticket.id), {
+    cookie: bob.cookie,
+  });
+  assert.equal(stranger.status, 404);
+});
+
+test("brief: a persona without the AI opener is prefixed and an overlong greeting clipped", async () => {
+  const ticket = await submitTicket();
+  const saved = briefReply;
+  briefReply = () => ({
+    status: "completed",
+    output_text: JSON.stringify({
+      persona: "Help the customer with their robot vacuum that jerks backward after it stops.",
+      greeting: `Hello there. ${"I watched your clip and I can help. ".repeat(10)}`,
+    }),
+  });
+  try {
+    const res = await call<SupportCallBriefResponse>(
+      h.base,
+      "POST",
+      paths.ticketSupportCallBrief(ticket.id),
+      { cookie: alice.cookie },
+    );
+    assert.equal(res.status, 200);
+    assert.ok(res.body.package.persona.startsWith(`${SUPPORT_CALL_PERSONA_OPENER}. Help`));
+    assert.ok(res.body.package.greeting.length <= 200);
+  } finally {
+    briefReply = saved;
+  }
+});
+
+test("brief: a provider failure is a bounded error and nothing is cached", async () => {
+  const ticket = await submitTicket();
+  const saved = briefReply;
+  briefReply = () => {
+    throw Object.assign(new Error("upstream"), { status: 500 });
+  };
+  try {
+    const res = await call(h.base, "POST", paths.ticketSupportCallBrief(ticket.id), {
+      cookie: alice.cookie,
+    });
+    assert.equal(res.status, 502);
+    assert.equal(res.body.code, "PROVIDER_FAILED");
+    const row = getRow(
+      h.ctx.db,
+      "SELECT * FROM ticket_support_calls WHERE ticket_id = ?",
+      ticket.id,
+    );
+    assert.equal(row, undefined);
+  } finally {
+    briefReply = saved;
+  }
 });

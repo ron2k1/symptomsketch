@@ -3,6 +3,8 @@ import {
   LIMITS,
   ROUTES,
   SUPPORT_CALL_MODEL,
+  paths,
+  type SupportCallBriefResponse,
   type SupportCallTokenResponse,
 } from "@symptomsketch/contracts";
 import type { AppContext } from "../context.ts";
@@ -10,8 +12,10 @@ import { bumpSessionCounter, limiterFor } from "../domain/leases.ts";
 import { AppError } from "../http/errors.ts";
 import { requireSession } from "../http/session.ts";
 import { param } from "../http/validate.ts";
+import { GeminiError } from "../providers/gemini-client.ts";
 import { ReactorTokenError, mintReactorToken } from "../providers/reactor-token.ts";
 import { loadTicketForViewer } from "./access.ts";
+import { cachedPackage, ensureCallPackage, getCallRow } from "./call-brief.ts";
 
 /** Exactly what the route asks the minter for; the JWT itself never leaves the response body. */
 export interface SupportCallMintRequest {
@@ -38,6 +42,7 @@ export function setSupportCallMinterFor(ctx: AppContext, minter: SupportCallMint
  * Live AI support agent call (Reactor Vidu S2 Avatar), scoped to one ticket. Owner customer or
  * Demo Support only (loadTicketForViewer: anything else is a 404).
  *   POST ROUTES.ticketSupportCallToken -> SupportCallTokenResponse (max_sessions=1, ~300 s cap)
+ *   POST ROUTES.ticketSupportCallBrief -> SupportCallBriefResponse (Gemini once per ticket, cached)
  */
 export function registerSupportCall(router: Router, ctx: AppContext): void {
   router.post(ROUTES.ticketSupportCallToken, async (req, res) => {
@@ -74,4 +79,39 @@ export function registerSupportCall(router: Router, ctx: AppContext): void {
     res.set("Cache-Control", "no-store");
     res.json(body);
   });
+
+  router.post(ROUTES.ticketSupportCallBrief, async (req, res) => {
+    const session = requireSession(req);
+    const ticket = loadTicketForViewer(ctx, session, param(req, "ticketId"));
+    if (!cachedPackage(ctx, ticket.id)) limiterFor(ctx).take("supportCallBrief", session.id);
+    let written: Awaited<ReturnType<typeof ensureCallPackage>>;
+    try {
+      written = await ensureCallPackage(ctx, ticket);
+    } catch (err) {
+      throw providerError("brief", ticket.id, err);
+    }
+    const body: SupportCallBriefResponse = {
+      package: written.pkg,
+      modelId: written.modelId,
+      avatarId: getCallRow(ctx, ticket.id)?.avatar_id ?? null,
+      portraitUrl: paths.ticketSupportCallPortrait(ticket.id),
+    };
+    res.json(body);
+  });
+}
+
+/** Bounded AppError for a Gemini failure; logs code/reason/status only. */
+function providerError(step: string, ticketId: string, err: unknown): AppError {
+  if (!(err instanceof GeminiError)) {
+    console.warn(`[support-call] ${step} failed ticket=${ticketId} code=INTERNAL_ERROR`);
+    return new AppError("PROVIDER_FAILED");
+  }
+  console.warn(
+    `[support-call] ${step} failed ticket=${ticketId} code=${err.code} reason=${err.reason} ` +
+      `status=${err.httpStatus ?? "-"}`,
+  );
+  if (err.code === "ASSESSMENT_FAILED") {
+    return new AppError(err.reason === "timeout" ? "PROVIDER_TIMEOUT" : "PROVIDER_FAILED");
+  }
+  return new AppError(err.code);
 }
