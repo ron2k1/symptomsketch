@@ -99,7 +99,12 @@ export function TicketSnapshotPanel({ ticket }: { ticket: Ticket }) {
         ) : (
           <div className="grid gap-3 md:grid-cols-2">
             {customerAttachments.map((a) => (
-              <AttachmentCard key={a.id} ticketId={ticket.id} attachment={a} />
+              <AttachmentCard
+                key={a.id}
+                ticketId={ticket.id}
+                attachment={a}
+                criticOverride={ticket.snapshot.criticOverride ?? null}
+              />
             ))}
           </div>
         )}
