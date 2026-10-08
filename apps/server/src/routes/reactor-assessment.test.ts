@@ -116,6 +116,40 @@ test("reactor token: a pending clarification keeps the last ready plan previewab
   assert.equal((await token(a.b, a.caseId, ready.id)).status, 200);
 });
 
+test("preview lease: a late heartbeat revives a lapsed lease only while its slot is free", async () => {
+  releaseAllLeases();
+  const a = await readyCase(h);
+  const ta = (await (await token(a.b, a.caseId, a.planId)).json()) as ReactorTokenResponse;
+  const lapse = () =>
+    h.srv.ctx.db
+      .prepare("UPDATE leases SET expires_at = ? WHERE id = ?")
+      .run(new Date(Date.now() - 1_000).toISOString(), ta.leaseId);
+  const heartbeat = async () =>
+    (await (
+      await a.b.json(`/api/cases/${a.caseId}/preview-lease`, "POST", {
+        leaseId: ta.leaseId,
+        action: "heartbeat",
+      })
+    ).json()) as PreviewLeaseResponse;
+
+  // The browser stalled past the TTL while its X2 session kept running: carry on.
+  lapse();
+  const revived = await heartbeat();
+  assert.equal(revived.active, true);
+  assert.ok(Date.parse(revived.expiresAt!) > Date.now());
+
+  // Lapsed again, and meanwhile two other sessions took both demo slots: stop.
+  lapse();
+  const b = await readyCase(h);
+  const c = await readyCase(h);
+  assert.equal((await token(b.b, b.caseId, b.planId)).status, 200);
+  assert.equal((await token(c.b, c.caseId, c.planId)).status, 200);
+  assert.equal((await heartbeat()).active, false);
+  // Stopped for good: the lease was released, so a free slot later does not bring it back.
+  releaseAllLeases();
+  assert.equal((await heartbeat()).active, false);
+});
+
 /** Insert a ready take whose final MP4 file exists on disk (labeled test bytes, not a video). */
 function seedTake(caseId: string, planId: string): { takeId: string } {
   const db = h.srv.ctx.db;
