@@ -58,8 +58,10 @@ export interface ReadoutCell {
 
 export function readoutCells(input: {
   stats: LiveStats;
-  /** Duration of the latest successful Gemini planner request. */
+  /** Duration of the latest Gemini planner request that created a plan (HTTP 201). */
   plannedMs: number | null;
+  /** The latest planner response was a 200 replay of a stored plan (no Gemini call). */
+  planCached?: boolean;
   /** Time since the preview started (spans reconnects). */
   sessionMs: number | null;
 }): ReadoutCell[] {
@@ -68,7 +70,9 @@ export function readoutCells(input: {
     cell("session", "Live for", measured(input.sessionMs), formatClock),
     cell("fps", "Output", stats.fps, (v) => `${v.toFixed(1)} fps`),
     cell("rtt", "Round trip", stats.rttMs, ms),
-    cell("planned", "Gemini planned in", measured(input.plannedMs), sec),
+    input.planCached
+      ? { key: "planned", label: "Gemini planned in", value: "cached" }
+      : cell("planned", "Gemini planned in", measured(input.plannedMs), sec),
     cell("applied", "X2 accepted prompt in", stats.appliedMs, ms),
     cell("connect", "Connected in", stats.connectMs, sec),
   ];

@@ -4,8 +4,10 @@ import { readoutCells, type LiveStats } from "./x2-stats";
 
 export interface StageStatsProps {
   stats: LiveStats;
-  /** Latest Gemini planner round trip for this case (Resource Timing), or null. */
+  /** Latest Gemini planner round trip that created a plan (HTTP 201), or null. */
   plannedMs: number | null;
+  /** The latest planner response replayed a stored plan (HTTP 200). */
+  planCached: boolean;
   /** performance.now() of the explicit Start; the uptime spans reconnects. */
   startedAt: number | null;
   reconnecting: boolean;
@@ -15,9 +17,15 @@ export interface StageStatsProps {
  * Live Reactor X2 numbers in the Reactor face. Only measured values render: fps and round trip
  * from WebRTC stats, X2's prompt acceptance time, the planner request time, the session uptime.
  */
-export function StageStats({ stats, plannedMs, startedAt, reconnecting }: StageStatsProps) {
+export function StageStats({
+  stats,
+  plannedMs,
+  planCached,
+  startedAt,
+  reconnecting,
+}: StageStatsProps) {
   const sessionMs = useUptime(startedAt);
-  const cells = readoutCells({ stats, plannedMs, sessionMs });
+  const cells = readoutCells({ stats, plannedMs, planCached, sessionMs });
   if (cells.length === 0) return null;
   return (
     <div

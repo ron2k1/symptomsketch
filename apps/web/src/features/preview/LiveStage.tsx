@@ -216,6 +216,7 @@ export function LiveStage(props: LiveStageProps) {
             ? {
                 stats: session.stats,
                 plannedMs: planTiming?.ms ?? null,
+                planCached: planTiming?.cached ?? false,
                 startedAt: session.startedAt,
                 reconnecting: session.reconnecting,
               }

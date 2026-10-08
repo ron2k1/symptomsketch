@@ -54,6 +54,12 @@ describe("readoutCells", () => {
     ]);
   });
 
+  it("shows a cached plan replay as cached, never as planning time", () => {
+    expect(
+      readoutCells({ stats: EMPTY_STATS, plannedMs: null, planCached: true, sessionMs: null }),
+    ).toEqual([{ key: "planned", label: "Gemini planned in", value: "cached" }]);
+  });
+
   it("omits every value that is not measured instead of showing a placeholder", () => {
     expect(readoutCells({ stats: EMPTY_STATS, plannedMs: null, sessionMs: null })).toEqual([]);
     expect(

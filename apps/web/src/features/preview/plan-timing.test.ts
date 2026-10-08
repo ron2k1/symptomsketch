@@ -17,7 +17,7 @@ describe("latestPlanRequest (Resource Timing for POST /api/cases/:id/plans)", ()
   it("measures the planner request of this case", () => {
     expect(
       latestPlanRequest([entry({ name: `${ORIGIN}/api/cases/case_1/plans` })], "case_1"),
-    ).toEqual({ endedAt: 7_080, ms: 6_080 });
+    ).toEqual({ endedAt: 7_080, ms: 6_080, cached: false });
   });
 
   it("picks the most recently finished plan request", () => {
@@ -28,7 +28,7 @@ describe("latestPlanRequest (Resource Timing for POST /api/cases/:id/plans)", ()
       ],
       "case_1",
     );
-    expect(got).toEqual({ endedAt: 54_500, ms: 4_500 });
+    expect(got).toEqual({ endedAt: 54_500, ms: 4_500, cached: false });
   });
 
   it("ignores other cases, other routes, failed or unfinished requests and non-fetch loads", () => {
@@ -55,11 +55,32 @@ describe("latestPlanRequest (Resource Timing for POST /api/cases/:id/plans)", ()
     expect(got).toBeNull();
   });
 
-  it("accepts browsers that do not expose responseStatus, and encodes the case id", () => {
+  it("ignores browsers that do not expose responseStatus (a replay cannot be told apart)", () => {
     const got = latestPlanRequest(
       [entry({ name: `${ORIGIN}/api/cases/a%20b/plans?x=1`, responseStatus: undefined })],
       "a b",
     );
-    expect(got).toEqual({ endedAt: 7_080, ms: 6_080 });
+    expect(got).toBeNull();
+  });
+
+  it("encodes the case id", () => {
+    const got = latestPlanRequest([entry({ name: `${ORIGIN}/api/cases/a%20b/plans?x=1` })], "a b");
+    expect(got).toEqual({ endedAt: 7_080, ms: 6_080, cached: false });
+  });
+
+  it("marks a 200 idempotent replay as cached instead of planning time", () => {
+    const got = latestPlanRequest(
+      [
+        entry({ name: `${ORIGIN}/api/cases/case_1/plans`, startTime: 1_000, responseEnd: 7_080 }),
+        entry({
+          name: `${ORIGIN}/api/cases/case_1/plans`,
+          responseStatus: 200,
+          startTime: 50_000,
+          responseEnd: 50_090,
+        }),
+      ],
+      "case_1",
+    );
+    expect(got).toEqual({ endedAt: 50_090, ms: null, cached: true });
   });
 });

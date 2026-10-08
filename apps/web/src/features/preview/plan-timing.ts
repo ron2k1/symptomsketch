@@ -18,7 +18,10 @@ export interface PlanTimingEntry {
 export interface PlanTiming {
   /** performance.now() when the plan response finished. */
   endedAt: number;
-  ms: number;
+  /** Gemini planning time; null when the latest response was a cached replay. */
+  ms: number | null;
+  /** 200 = idempotent replay of a stored plan (no Gemini call), 201 = planned by Gemini. */
+  cached: boolean;
 }
 
 const FETCH_INITIATORS = new Set(["fetch", "xmlhttprequest"]);
@@ -31,12 +34,12 @@ export function latestPlanRequest(
   let best: PlanTiming | null = null;
   for (const e of entries) {
     if (!FETCH_INITIATORS.has(e.initiatorType) || !(e.responseEnd > 0)) continue;
-    if (e.responseStatus !== undefined && (e.responseStatus < 200 || e.responseStatus >= 300)) {
-      continue;
-    }
+    // Only 201 is a fresh Gemini plan; 200 replays a stored one. Without a status we cannot tell.
+    if (e.responseStatus !== 201 && e.responseStatus !== 200) continue;
     if (pathnameOf(e.name) !== target) continue;
     if (!best || e.responseEnd > best.endedAt) {
-      best = { endedAt: e.responseEnd, ms: e.responseEnd - e.startTime };
+      const cached = e.responseStatus === 200;
+      best = { endedAt: e.responseEnd, ms: cached ? null : e.responseEnd - e.startTime, cached };
     }
   }
   return best;
