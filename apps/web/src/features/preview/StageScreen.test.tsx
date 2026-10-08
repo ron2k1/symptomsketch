@@ -41,6 +41,22 @@ describe("StageScreen chips", () => {
     expect(frame.querySelector("video[src='/api/takes/tk_1/media']")).not.toBeNull();
   });
 
+  it("plays a saved take on loop, muted and inline, with controls kept", () => {
+    const { container } = render(
+      <StageScreen
+        {...props({
+          take: { id: "tk_1", number: 2, mediaUrl: "/api/takes/tk_1/media", stateLabel: "Ready" },
+        })}
+      />,
+    );
+    const video = container.querySelector<HTMLVideoElement>("video[src='/api/takes/tk_1/media']")!;
+    expect(video.autoplay).toBe(true);
+    expect(video.loop).toBe(true);
+    expect(video.muted).toBe(true);
+    expect(video.hasAttribute("playsinline")).toBe(true);
+    expect(video.controls).toBe(true);
+  });
+
   it("keeps live chips over the frame while previewing", () => {
     const { container } = render(<StageScreen {...props({ showLiveVideo: true, isLive: true })} />);
     const frame = frameOf(container);

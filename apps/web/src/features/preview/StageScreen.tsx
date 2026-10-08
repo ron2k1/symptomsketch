@@ -67,8 +67,11 @@ export function StageScreen(p: StageScreenProps) {
             className="absolute inset-0 h-full w-full bg-background object-contain"
             src={takeSrc}
             controls
+            autoPlay
+            loop
+            muted
             playsInline
-            preload="metadata"
+            preload="auto"
             aria-label={`${formatTakeNumber(p.take.number)} final MP4`}
           />
         )}
