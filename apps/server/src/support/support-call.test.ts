@@ -9,6 +9,7 @@ import {
   type SessionState,
   type SupportCallBriefResponse,
   type SupportCallTokenResponse,
+  type SupportCallTranscript,
   type Ticket,
   type TicketResponse,
 } from "@symptomsketch/contracts";
@@ -361,4 +362,62 @@ test("avatar id: saved per ticket and handed back with the brief", async () => {
   );
   assert.equal(brief.status, 200);
   assert.equal(brief.body.avatarId, "av_123");
+});
+
+test("transcript: stored once per idempotency key and shown to support only", async () => {
+  const ticket = await submitTicket();
+  const body = {
+    lines: [
+      { speaker: "character", text: "Hi, I'm Sam, an AI support agent." },
+      { speaker: "user", text: "It jerks back after it stops.", typed: true },
+    ],
+    durationSeconds: 42.4,
+    endReason: "user_ended",
+    idempotencyKey: "call-transcript-1",
+  };
+  const stranger = await call(h.base, "POST", paths.ticketSupportCallTranscripts(ticket.id), {
+    cookie: bob.cookie,
+    body,
+  });
+  assert.equal(stranger.status, 404);
+  const bad = await call(h.base, "POST", paths.ticketSupportCallTranscripts(ticket.id), {
+    cookie: alice.cookie,
+    body: { ...body, lines: [{ speaker: "narrator", text: "x" }] },
+  });
+  assert.equal(bad.status, 400);
+
+  const first = await call<SupportCallTranscript>(
+    h.base,
+    "POST",
+    paths.ticketSupportCallTranscripts(ticket.id),
+    { cookie: alice.cookie, body },
+  );
+  assert.equal(first.status, 201);
+  assert.equal(first.body.ticketId, ticket.id);
+  assert.equal(first.body.durationSeconds, 42);
+  assert.deepEqual(first.body.lines, body.lines);
+  assert.match(first.body.id, /^sct_/);
+  const replay = await call<SupportCallTranscript>(
+    h.base,
+    "POST",
+    paths.ticketSupportCallTranscripts(ticket.id),
+    { cookie: alice.cookie, body },
+  );
+  assert.equal(replay.status, 200);
+  assert.equal(replay.body.id, first.body.id);
+
+  const asCustomer = await call<TicketResponse>(h.base, "GET", paths.ticket(ticket.id), {
+    cookie: alice.cookie,
+  });
+  assert.equal(asCustomer.status, 200);
+  assert.equal(asCustomer.body.ticket.aiCallTranscripts, undefined);
+  const asSupport = await call<TicketResponse>(h.base, "GET", paths.ticket(ticket.id), {
+    cookie: support.cookie,
+  });
+  assert.equal(asSupport.status, 200);
+  assert.deepEqual(
+    asSupport.body.ticket.aiCallTranscripts?.map((t) => t.id),
+    [first.body.id],
+  );
+  assert.equal(asSupport.body.ticket.aiCallTranscripts?.[0]?.lines.length, 2);
 });

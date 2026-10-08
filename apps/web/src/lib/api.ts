@@ -30,10 +30,12 @@ import {
   type ReactorTokenResponse,
   type RequestAssessmentRequest,
   type RetryExportRequest,
+  type CreateSupportCallTranscriptRequest,
   type SaveSupportCallAvatarRequest,
   type SessionState,
   type SupportCallBriefResponse,
   type SupportCallTokenResponse,
+  type SupportCallTranscript,
   type SupportInboxResponse,
   type TakeMessageResponse,
   type TakeResponse,
@@ -189,6 +191,16 @@ export const getSupportCallBrief = (ticketId: string, init?: RequestInit) =>
   post<SupportCallBriefResponse>(paths.ticketSupportCallBrief(ticketId), undefined, init);
 export const saveSupportCallAvatar = (ticketId: string, req: SaveSupportCallAvatarRequest) =>
   send<OkResponse>("PUT", paths.ticketSupportCallAvatar(ticketId), req);
+
+/** keepalive lets the save outlive a closing tab; browsers cap keepalive bodies at 64 KiB. */
+const KEEPALIVE_MAX_BYTES = 60_000;
+export const saveSupportCallTranscript = (
+  ticketId: string,
+  req: CreateSupportCallTranscriptRequest,
+) =>
+  post<SupportCallTranscript>(paths.ticketSupportCallTranscripts(ticketId), req, {
+    keepalive: new TextEncoder().encode(JSON.stringify(req)).length < KEEPALIVE_MAX_BYTES,
+  });
 
 /** The agent portrait bytes for create_avatar (Nano Banana composite or the base portrait). */
 export async function fetchSupportCallPortrait(url: string, init?: RequestInit): Promise<Blob> {

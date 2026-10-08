@@ -24,6 +24,8 @@ export const SUPPORT_CALL_COPY = {
   portraitCredit: "Portrait: AI-generated with Nano Banana · fictional",
   transcriptHeading: "AI support agent call transcript",
   micDenied: "Microphone unavailable. You can keep typing your messages.",
+  transcriptSaved: "The call transcript was added to your ticket for Demo Support.",
+  transcriptFailed: "The call transcript could not be added to your ticket.",
 } as const;
 
 export const SupportCallPhase = z.enum(["idle", "preparing", "connecting", "live", "ended"]);

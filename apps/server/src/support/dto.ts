@@ -10,6 +10,7 @@ import {
 } from "@symptomsketch/contracts";
 import { allRows, fromJson, getRow } from "../db/index.ts";
 import type { Db } from "../db/index.ts";
+import { listCallTranscripts } from "./call-transcripts.ts";
 import type { AttachmentRow, ReplyRow, TicketRow } from "./rows.ts";
 
 /** Row -> DTO mapping for tickets. Read-only; every query here hits an index (polled every 3 s). */
@@ -112,6 +113,7 @@ export function ticketDto(
     workCaseIds: viewer.supportSessionId
       ? listWorkCaseIds(db, row.id, viewer.supportSessionId)
       : [],
+    ...(viewer.supportSessionId ? { aiCallTranscripts: listCallTranscripts(db, row.id) } : {}),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

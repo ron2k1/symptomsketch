@@ -4,6 +4,7 @@ import {
   ROUTES,
   SUPPORT_CALL_MODEL,
   paths,
+  CreateSupportCallTranscriptRequest,
   SaveSupportCallAvatarRequest,
   type OkResponse,
   type SupportCallBriefResponse,
@@ -21,6 +22,7 @@ import { ReactorTokenError, mintReactorToken } from "../providers/reactor-token.
 import { loadTicketForViewer } from "./access.ts";
 import { cachedPackage, ensureCallPackage, getCallRow } from "./call-brief.ts";
 import { portraitSettled, ticketPortrait } from "./call-portrait.ts";
+import { saveCallTranscript } from "./call-transcripts.ts";
 
 /** Exactly what the route asks the minter for; the JWT itself never leaves the response body. */
 export interface SupportCallMintRequest {
@@ -50,6 +52,8 @@ export function setSupportCallMinterFor(ctx: AppContext, minter: SupportCallMint
  *   POST ROUTES.ticketSupportCallBrief -> SupportCallBriefResponse (Gemini once per ticket, cached)
  *   GET  ROUTES.ticketSupportCallPortrait -> image/jpeg (Nano Banana composite, else base portrait)
  *   PUT  ROUTES.ticketSupportCallAvatar  SaveSupportCallAvatarRequest -> OkResponse
+ *   POST ROUTES.ticketSupportCallTranscripts CreateSupportCallTranscriptRequest
+ *        -> SupportCallTranscript (201 new, 200 replay of the same idempotency key)
  */
 export function registerSupportCall(router: Router, ctx: AppContext): void {
   router.post(ROUTES.ticketSupportCallToken, async (req, res) => {
@@ -130,6 +134,14 @@ export function registerSupportCall(router: Router, ctx: AppContext): void {
       .run(ticket.id, input.avatarId, ts, ts);
     const body: OkResponse = { ok: true };
     res.json(body);
+  });
+
+  router.post(ROUTES.ticketSupportCallTranscripts, (req, res) => {
+    const session = requireSession(req);
+    const ticket = loadTicketForViewer(ctx, session, param(req, "ticketId"));
+    const input = parseBody(CreateSupportCallTranscriptRequest, req);
+    const { transcript, created } = saveCallTranscript(ctx, session, ticket, input);
+    res.status(created ? 201 : 200).json(transcript);
   });
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Hand, Mic, MicOff, PhoneOff, Send, Video } from "lucide-react";
 import {
   LIMITS,
@@ -8,6 +8,8 @@ import {
 } from "@symptomsketch/contracts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { saveSupportCallTranscript } from "@/lib/api";
+import { newIdempotencyKey } from "@/lib/ids";
 import { cn } from "@/lib/utils";
 import {
   INITIAL_CALL_VIEW,
@@ -94,10 +96,29 @@ function Transcript({ view }: { view: CallView }) {
 
 export interface SupportCallProps {
   ticketId: string;
-  /** Called once after a call that produced transcript lines has ended and disconnected. */
+  /** Called once after a call that produced transcript lines has ended and its save settled. */
   onEnded?(ended: CallEnded): void;
-  /** Shown under the ended state, e.g. that the transcript was added to the ticket. */
-  endedNote?: string | null;
+}
+
+type SaveState = "idle" | "saving" | "saved" | "failed";
+
+/** After end_call + disconnect, the final lines go on the ticket for Demo Support. */
+function useTranscriptSave(ticketId: string, onEnded?: (ended: CallEnded) => void) {
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const save = useCallback(
+    (ended: CallEnded) => {
+      setSaveState("saving");
+      // One key per finished call: a retried POST of the same call returns the same record.
+      saveSupportCallTranscript(ticketId, { ...ended, idempotencyKey: newIdempotencyKey() })
+        .then(
+          () => setSaveState("saved"),
+          () => setSaveState("failed"),
+        )
+        .finally(() => onEnded?.(ended));
+    },
+    [ticketId, onEnded],
+  );
+  return { saveState, save, reset: () => setSaveState("idle") };
 }
 
 /**
@@ -105,15 +126,17 @@ export interface SupportCallProps {
  * Avatar) who already knows this ticket. Voice (mic only after the customer turns it on) or typed
  * messages; capped at about four minutes; ends and disconnects on End call, unmount or page hide.
  */
-export function SupportCall({ ticketId, onEnded, endedNote }: SupportCallProps) {
+export function SupportCall({ ticketId, onEnded }: SupportCallProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const { view, controller } = useSupportCall(onEnded);
+  const transcript = useTranscriptSave(ticketId, onEnded);
+  const { view, controller } = useSupportCall(transcript.save);
   const [draft, setDraft] = useState("");
   const idle = view.phase === "idle";
   const live = view.phase === "live";
   const active = !idle && view.phase !== "ended";
 
   function start() {
+    transcript.reset();
     void controller.start(ticketId, () => videoRef.current);
   }
 
@@ -200,8 +223,20 @@ export function SupportCall({ ticketId, onEnded, endedNote }: SupportCallProps) 
             <Video aria-hidden />
             {idle ? SUPPORT_CALL_COPY.start : "Talk to support again"}
           </Button>
-          {view.phase === "ended" && endedNote ? (
-            <p className="text-sm text-muted-foreground">{endedNote}</p>
+          {view.phase === "ended" && transcript.saveState !== "idle" ? (
+            <p
+              role="status"
+              className={cn(
+                "text-sm",
+                transcript.saveState === "failed" ? "text-warning" : "text-muted-foreground",
+              )}
+            >
+              {transcript.saveState === "saving"
+                ? "Adding the call transcript to your ticket…"
+                : transcript.saveState === "saved"
+                  ? SUPPORT_CALL_COPY.transcriptSaved
+                  : SUPPORT_CALL_COPY.transcriptFailed}
+            </p>
           ) : null}
         </div>
       ) : (
