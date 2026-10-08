@@ -14,7 +14,8 @@ import type { TicketRow } from "./rows.ts";
 /**
  * Final transcripts of live AI support agent calls, stored on the ticket so Demo Support sees what
  * the agent and the customer said ("AI support agent call transcript"). The browser reports the
- * settled lines after end_call + disconnect; the same idempotency key returns the same record.
+ * settled lines as soon as the call ends; the same idempotency key returns the same record, and
+ * one ticket keeps at most LIMITS.supportCallTranscriptsPerTicket.
  */
 
 interface TranscriptRow {
