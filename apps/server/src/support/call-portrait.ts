@@ -2,8 +2,12 @@
 // Base: one fictional agent generated once with Nano Banana by scripts/generate-support-agent.ts
 // and committed as apps/web/public/assets/support-agent.jpg. Per ticket: Nano Banana composites
 // that same fictional agent holding the customer's own product (the ticket's normalized reference
-// photo), cached on disk. Any failure or a slow provider falls back to the base portrait.
-// Never uses a real person's photo: the only person in any input is the generated agent.
+// photo), cached on disk. Generation starts when the ticket is sent (warmTicketPortrait), so the
+// composite is usually cached before the customer clicks "Talk to support now". A call that cannot
+// wait for it gets the base portrait while generation finishes in the background; only a failure
+// that a retry cannot fix (no product photo, a safety block) keeps the base portrait for good.
+// The only generated person is the fictional agent. The customer's product photo is passed as is
+// and is not screened for people.
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
@@ -96,7 +100,7 @@ function cacheDir(ctx: AppContext): string {
   return path.join(ctx.paths.root, "media", "support-agents");
 }
 
-/** True once the ticket has a composite or a remembered fallback (no paid call needed). */
+/** True once the ticket has a composite or a remembered permanent failure (no paid call needed). */
 export function portraitSettled(ctx: AppContext, ticketId: string): boolean {
   const dir = cacheDir(ctx);
   return (
@@ -105,12 +109,20 @@ export function portraitSettled(ctx: AppContext, ticketId: string): boolean {
   );
 }
 
+/**
+ * Failures a retry cannot fix: the ticket has no usable product photo, or the provider blocked the
+ * input. Anything else (timeout, rate limit, network, provider error, config) is retried on the
+ * next request instead of costing the ticket its composite for good.
+ */
+const PERMANENT_FAILURES = new Set(["NOT_FOUND", "PROVIDER_BLOCKED"]);
+
 const inflight = new Map<string, Promise<TicketPortrait>>();
 
 /**
- * The portrait this ticket's call uses. First call per ticket generates the composite (single
- * flight, bounded by LIMITS.supportCallPortraitTimeoutMs); a failure is remembered as a marker
- * so later calls serve the base portrait immediately instead of paying again.
+ * The portrait this ticket's call uses, once generation settles. The composite is generated once
+ * per ticket (single flight, bounded by LIMITS.supportCallPortraitGenerateTimeoutMs) and cached.
+ * A permanent failure is remembered as a marker; any other failure serves the base portrait this
+ * time and leaves the ticket free to try again.
  */
 export function ticketPortrait(ctx: AppContext, ticket: TicketRow): Promise<TicketPortrait> {
   const dir = cacheDir(ctx);
@@ -131,12 +143,16 @@ export function ticketPortrait(ctx: AppContext, ticket: TicketRow): Promise<Tick
       return { path: composite, source: "composite" };
     } catch (err) {
       const e = err as { code?: string; reason?: string; httpStatus?: number | null };
+      const permanent = PERMANENT_FAILURES.has(e.code ?? "");
       console.warn(
         `[support-call] portrait fallback ticket=${ticket.id} code=${e.code ?? "-"} ` +
-          `reason=${e.reason ?? "-"} status=${e.httpStatus ?? "-"}`,
+          `reason=${e.reason ?? "-"} status=${e.httpStatus ?? "-"} ` +
+          (permanent ? "kept" : "will retry"),
       );
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(fallback, `${e.code ?? "error"}/${e.reason ?? "-"}\n`);
+      if (permanent) {
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(fallback, `${e.code ?? "error"}/${e.reason ?? "-"}\n`);
+      }
       return base;
     } finally {
       inflight.delete(ticket.id);
@@ -144,6 +160,42 @@ export function ticketPortrait(ctx: AppContext, ticket: TicketRow): Promise<Tick
   })();
   inflight.set(ticket.id, work);
   return work;
+}
+
+/**
+ * What a call gets now: the composite if it is ready within waitMs, else the base portrait. A
+ * composite still generating keeps going and is cached for the next call on this ticket.
+ */
+export async function portraitForCall(
+  ctx: AppContext,
+  ticket: TicketRow,
+  waitMs: number = LIMITS.supportCallPortraitTimeoutMs,
+): Promise<TicketPortrait> {
+  const started = Date.now();
+  let timer: NodeJS.Timeout | undefined;
+  const late = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), waitMs);
+  });
+  try {
+    const ready = await Promise.race([ticketPortrait(ctx, ticket), late]);
+    if (ready) return ready;
+    console.warn(
+      `[support-call] portrait still generating ticket=${ticket.id} waited ms=${Date.now() - started}`,
+    );
+    return { path: basePortraitPath(ctx), source: "base" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Start the composite as soon as the ticket is sent, so it is usually cached before the first
+ * call. No-op without a Gemini key (or an injected test generator); never throws.
+ */
+export function warmTicketPortrait(ctx: AppContext, ticketId: string): void {
+  if (!ctx.config.geminiApiKey && !clients.has(ctx)) return;
+  const ticket = getRow<TicketRow>(ctx.db, "SELECT * FROM tickets WHERE id = ?", ticketId);
+  if (ticket) void ticketPortrait(ctx, ticket).catch(() => undefined);
 }
 
 async function compositeForTicket(ctx: AppContext, ticket: TicketRow): Promise<Buffer> {
@@ -165,7 +217,7 @@ async function compositeForTicket(ctx: AppContext, ticket: TicketRow): Promise<B
     prompt: compositePrompt(snapshot.productLabel),
     images: [imagePart(agent, "image/jpeg"), imagePart(product, imageMime(asset.mime))],
     aspectRatio: PORTRAIT_ASPECT_RATIO,
-    timeoutMs: LIMITS.supportCallPortraitTimeoutMs,
+    timeoutMs: LIMITS.supportCallPortraitGenerateTimeoutMs,
   });
   console.log(
     `[support-call] portrait composite ticket=${ticket.id} model=${image.modelId} ` +

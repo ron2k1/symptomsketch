@@ -24,7 +24,8 @@ import { ReactorTokenError } from "../providers/reactor-token.ts";
 import sharp from "sharp";
 import type { GenerateImageRequest } from "../providers/nano-banana.ts";
 import { CALL_GROUND_RULES } from "./call-brief.ts";
-import { setNanoBananaFor } from "./call-portrait.ts";
+import { portraitForCall, setNanoBananaFor, ticketPortrait } from "./call-portrait.ts";
+import type { TicketRow } from "./rows.ts";
 import { setSupportCallMinterFor, type SupportCallMintRequest } from "./call-routes.ts";
 import {
   SUPPORT_CODE,
@@ -307,7 +308,10 @@ test("brief: a provider failure is a bounded error and nothing is cached", async
 });
 
 const imageRequests: GenerateImageRequest[] = [];
-let imageFails = false;
+/** Error code the stub generator throws (null = succeed). */
+let imageFails: string | null = null;
+/** When set, the stub generator waits for this before answering (a slow provider). */
+let imageGate: Promise<void> | null = null;
 
 async function stubJpeg(): Promise<Buffer> {
   return sharp({ create: { width: 30, height: 40, channels: 3, background: { r: 9, g: 9, b: 9 } } })
@@ -319,26 +323,32 @@ function useStubImages(): void {
   setNanoBananaFor(h.ctx, {
     generateImage: async (req) => {
       imageRequests.push(req);
-      if (imageFails) throw Object.assign(new Error("x"), { code: "ASSESSMENT_FAILED" });
+      if (imageGate) await imageGate;
+      if (imageFails) throw Object.assign(new Error("x"), { code: imageFails });
       return { bytes: await stubJpeg(), mime: "image/jpeg", modelId: "stub-image", latencyMs: 1 };
     },
   });
 }
 
+function ticketRow(id: string): TicketRow {
+  return getRow<TicketRow>(h.ctx.db, "SELECT * FROM tickets WHERE id = ?", id)!;
+}
+
 test("portrait: Nano Banana composites the agent with the ticket's product, cached per ticket", async () => {
   useStubImages();
-  const ticket = await submitTicket();
   const before = imageRequests.length;
+  const ticket = await submitTicket();
+  assert.equal(imageRequests.length, before + 1, "generation starts when the ticket is sent");
   const res = await call(h.base, "GET", paths.ticketSupportCallPortrait(ticket.id), {
     cookie: alice.cookie,
   });
   assert.equal(res.status, 200);
   assert.equal(res.res.headers.get("content-type"), "image/jpeg");
   assert.equal(res.res.headers.get("x-portrait-source"), "composite");
-  assert.equal(imageRequests.length, before + 1);
+  assert.equal(imageRequests.length, before + 1, "the call joins the warm-up, no second request");
   const req = imageRequests.at(-1)!;
   assert.equal(req.aspectRatio, "3:4");
-  assert.equal(req.timeoutMs, 25_000);
+  assert.equal(req.timeoutMs, 90_000);
   assert.equal(req.images?.length, 2, "base agent portrait + the customer's product photo");
   assert.match(req.prompt, /fictional/);
 
@@ -355,24 +365,69 @@ test("portrait: Nano Banana composites the agent with the ticket's product, cach
   assert.equal(stranger.status, 404);
 });
 
-test("portrait: a failed composite falls back to the base portrait and is not retried", async () => {
+test("portrait: a timeout serves the base portrait and the next call tries again", async () => {
   useStubImages();
-  const ticket = await submitTicket();
-  imageFails = true;
+  imageFails = "ASSESSMENT_FAILED";
   try {
-    const before = imageRequests.length;
+    const ticket = await submitTicket();
+    await ticketPortrait(h.ctx, ticketRow(ticket.id));
     const first = await call(h.base, "GET", paths.ticketSupportCallPortrait(ticket.id), {
       cookie: alice.cookie,
     });
     assert.equal(first.status, 200);
     assert.equal(first.res.headers.get("x-portrait-source"), "base");
+    imageFails = null;
+    const before = imageRequests.length;
     const again = await call(h.base, "GET", paths.ticketSupportCallPortrait(ticket.id), {
       cookie: alice.cookie,
     });
-    assert.equal(again.res.headers.get("x-portrait-source"), "base");
-    assert.equal(imageRequests.length, before + 1);
+    assert.equal(again.res.headers.get("x-portrait-source"), "composite");
+    assert.equal(imageRequests.length, before + 1, "a transient failure is not remembered");
   } finally {
-    imageFails = false;
+    imageFails = null;
+  }
+});
+
+test("portrait: a blocked composite keeps the base portrait and is not retried", async () => {
+  useStubImages();
+  imageFails = "PROVIDER_BLOCKED";
+  try {
+    const ticket = await submitTicket();
+    await ticketPortrait(h.ctx, ticketRow(ticket.id));
+    imageFails = null;
+    const before = imageRequests.length;
+    for (let i = 0; i < 2; i += 1) {
+      const res = await call(h.base, "GET", paths.ticketSupportCallPortrait(ticket.id), {
+        cookie: alice.cookie,
+      });
+      assert.equal(res.status, 200);
+      assert.equal(res.res.headers.get("x-portrait-source"), "base");
+    }
+    assert.equal(imageRequests.length, before);
+  } finally {
+    imageFails = null;
+  }
+});
+
+test("portrait: a slow composite serves base now and is cached for the next call", async () => {
+  useStubImages();
+  let release!: () => void;
+  imageGate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  try {
+    const ticket = await submitTicket();
+    const row = ticketRow(ticket.id);
+    const now = await portraitForCall(h.ctx, row, 20);
+    assert.equal(now.source, "base", "the call stops waiting");
+    release();
+    assert.equal((await ticketPortrait(h.ctx, row)).source, "composite", "generation finished");
+    const before = imageRequests.length;
+    assert.equal((await portraitForCall(h.ctx, row, 20)).source, "composite");
+    assert.equal(imageRequests.length, before, "served from the cache");
+  } finally {
+    imageGate = null;
+    release?.();
   }
 });
 
