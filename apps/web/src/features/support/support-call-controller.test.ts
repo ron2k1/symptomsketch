@@ -160,3 +160,99 @@ describe("SupportCallController avatar reuse", () => {
     await controller.end();
   });
 });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
+async function liveCall(controller: InstanceType<typeof SupportCallController>) {
+  await controller.start("tkt_1", () => null);
+  const model = sdk.FakeModel.instances.at(-1)!;
+  model.emit("transcript", { speaker: "character", text: "Hi, I'm Sam.", final: true });
+  return model;
+}
+
+describe("SupportCallController end of call", () => {
+  it("hands over the transcript and media at once, before end_call answers", async () => {
+    const { controller, ended, view } = setup();
+    const model = await liveCall(controller);
+    const endCall = deferred<undefined>();
+    model.endCallResult = endCall.promise;
+
+    const ending = controller.end();
+    expect(view().phase).toBe("ended");
+    expect(view().hasVideo).toBe(false);
+    expect(ended).toHaveBeenCalledWith(
+      expect.objectContaining({
+        lines: [{ speaker: "character", text: "Hi, I'm Sam." }],
+        endReason: "ended_by_client",
+      }),
+    );
+    expect(model.listenerCount()).toBe(0);
+    expect(model.calls).toContain("end_call");
+    expect(model.calls).not.toContain("disconnect");
+
+    endCall.resolve(undefined);
+    await ending;
+    expect(model.calls).toContain("disconnect");
+  });
+
+  it("starts a clean call right after End that the old teardown cannot touch", async () => {
+    const { controller, ended, view } = setup();
+    const first = await liveCall(controller);
+    const endCall = deferred<undefined>();
+    first.endCallResult = endCall.promise;
+    const ending = controller.end();
+
+    await controller.start("tkt_1", () => null);
+    const second = sdk.FakeModel.instances.at(-1)!;
+    expect(second).not.toBe(first);
+    expect(view().phase).toBe("live");
+    const listeners = second.listenerCount();
+    expect(listeners).toBeGreaterThan(0);
+
+    endCall.resolve(undefined);
+    await ending;
+    expect(first.calls).toContain("disconnect");
+    expect(second.calls).not.toContain("disconnect");
+    expect(second.listenerCount()).toBe(listeners);
+    expect(view().phase).toBe("live");
+    expect(await controller.say("Still there?")).toBe(true);
+    expect(second.calls).toContain("say:Still there?");
+    expect(ended).toHaveBeenCalledTimes(1);
+    await controller.end();
+  });
+
+  it("drops a call that was still starting when it ended once the next call runs", async () => {
+    const token = deferred<{ jwt: string }>();
+    api.createSupportCallToken.mockReturnValueOnce(token.promise);
+    const { controller, view } = setup();
+    const stale = controller.start("tkt_1", () => null);
+    await vi.waitFor(() => expect(api.createSupportCallToken).toHaveBeenCalledTimes(1));
+    await controller.end();
+    expect(view().phase).toBe("ended");
+
+    await controller.start("tkt_1", () => null);
+    expect(view().phase).toBe("live");
+    token.resolve({ jwt: "late.jwt" });
+    await stale;
+    expect(sdk.FakeModel.instances).toHaveLength(1);
+    expect(sdk.FakeModel.instances[0]!.listenerCount()).toBeGreaterThan(0);
+    expect(view().phase).toBe("live");
+    await controller.end();
+  });
+
+  it("on page hide saves the transcript and disconnects without waiting for end_call", async () => {
+    const { controller, ended } = setup();
+    const model = await liveCall(controller);
+    model.endCallResult = new Promise(() => undefined);
+    controller.dispose();
+    expect(ended).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(model.calls).toContain("disconnect"));
+    expect(model.calls).not.toContain("end_call");
+  });
+});
