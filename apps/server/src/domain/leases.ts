@@ -92,8 +92,12 @@ function ownedLease(db: Db, sessionId: string, caseId: string, leaseId: string):
 }
 
 /**
- * Heartbeat extends an active lease by the TTL, never beyond the preview cap measured from the
- * lease's creation. Expired, released or capped leases stay inactive (the browser must stop).
+ * Heartbeat extends a lease by the TTL, never beyond the preview cap measured from the lease's
+ * creation. Released or capped leases stay inactive (the browser must stop). A heartbeat that
+ * arrives after the TTL (the browser's main thread stalled for 30 s while its X2 session kept
+ * running) revives the lease when its slot is still free; once another session holds the slot it
+ * stays inactive too. A lapsed lease that is not released was never superseded: acquireLease
+ * releases every earlier lease of the session.
  */
 export function updateLease(
   ctx: AppContext,
@@ -102,8 +106,9 @@ export function updateLease(
   const lease = tx(ctx.db, () => {
     const row = ownedLease(ctx.db, input.sessionId, input.caseId, input.leaseId);
     const nowMs = Date.now();
-    const active = !row.released_at && Date.parse(row.expires_at) > nowMs;
-    if (input.action === "release" || !active) {
+    const lapsed = Date.parse(row.expires_at) <= nowMs;
+    const slotTaken = lapsed && countActiveLeases(ctx.db, input.sessionId) >= liveScenesMax(ctx);
+    if (input.action === "release" || row.released_at || slotTaken) {
       if (!row.released_at) releaseLease(ctx.db, row.id);
       return { ...row, active: false };
     }
@@ -131,9 +136,13 @@ export function updateLease(
 
 export type UsageKind = "reactorToken" | "plan" | "critic";
 
-/** Per-session caps per rolling hour. Paid calls only; failures still count (spec 8). */
+/**
+ * Per-session caps per rolling hour. Paid calls only; failures still count (spec 8). An endless
+ * preview rotates its token every 4:40, about 13 tokens an hour on its own, so the token cap leaves
+ * room for Stop/Start, drop reconnects and rehearsals on top of that.
+ */
 export const USAGE_LIMITS: Record<UsageKind, { max: number; windowMs: number }> = {
-  reactorToken: { max: 20, windowMs: 60 * 60_000 },
+  reactorToken: { max: 40, windowMs: 60 * 60_000 },
   plan: { max: 60, windowMs: 60 * 60_000 },
   critic: { max: 30, windowMs: 60 * 60_000 },
 };

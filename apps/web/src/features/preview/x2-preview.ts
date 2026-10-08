@@ -255,13 +255,29 @@ export class X2Preview {
 
   /**
    * Replays the movement from the start pose on the same connection (no new token): stop the run,
-   * re-apply the reference, fire the prompt again. Returns the new run id.
+   * re-apply the reference, fire the prompt again. With an `action`, the new run plays that
+   * action's motion sketch. Returns the new run id.
    */
-  async restartRun(reference: Blob, prompt: string): Promise<number> {
+  async restartRun(
+    reference: Blob,
+    prompt: string,
+    action?: SelectedAction | null,
+  ): Promise<number> {
     await this.reset();
     if (this.closed) throw new PreviewFailure("ABORTED", "prompt");
+    if (action !== undefined) this.motion = buildMotionProgram(action, this.region, this.purpose);
     await this.prepareRun(reference);
     return this.fire(prompt);
+  }
+
+  /**
+   * True when the current run animates the source, or a run with `action` would. Such changes need
+   * a fresh run: replaying a sketch mid-run, over X2's own history of the moved product, left the
+   * product in place with a ghost copy beside it (live check 2026-10-08). Every measured move came
+   * from a fresh run (doc section 9).
+   */
+  sketches(action: SelectedAction | null): boolean {
+    return this.motion !== null || buildMotionProgram(action, this.region, this.purpose) !== null;
   }
 
   /** setPrompt resolves with X2's correlated prompt_accepted (never rejects); times that reply. */
@@ -273,7 +289,8 @@ export class X2Preview {
   }
 
   /**
-   * Mid-run correction; applies from the next block, no restart. Callers serialize these.
+   * Mid-run correction; applies from the next block, no restart. Callers serialize these, and use
+   * restartRun() instead whenever sketches() is true.
    * With a new `action`, the motion sketch replays from the still pose so the change is visible.
    */
   async correct(prompt: string, action?: SelectedAction | null): Promise<boolean> {

@@ -229,6 +229,7 @@ export function LiveStage(props: LiveStageProps) {
       </p>
       <StageControls
         status={status}
+        reconnecting={session.reconnecting}
         statusText={statusText}
         detail={detail}
         takeMode={takeMode}
@@ -246,7 +247,11 @@ export function LiveStage(props: LiveStageProps) {
                 plannedMs: planTiming?.ms ?? null,
                 planCached: planTiming?.cached ?? false,
                 startedAt: session.startedAt,
-                reconnecting: session.reconnecting,
+                phase: session.reconnecting
+                  ? "reconnecting"
+                  : showLiveVideo
+                    ? "live"
+                    : "connecting",
               }
             : null
         }

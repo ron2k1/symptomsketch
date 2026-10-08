@@ -10,7 +10,7 @@ import { newClientRequestId } from "@/lib/ids";
 import { heartbeatLease, loadReference, releaseLease, releaseLeaseKeepalive } from "./lease";
 import { LIVE_COPY, LIVE_POLICY, evaluateLivePolicy, reconnectDelayMs } from "./live-policy";
 import { STAGE_ERRORS, STOP_NOTICES, stageErrorFrom, type StageError } from "./preview-errors";
-import { X2Preview, type FreshFrame } from "./x2-preview";
+import { PreviewFailure, X2Preview, type FreshFrame } from "./x2-preview";
 import { EMPTY_STATS, type LiveStats } from "./x2-stats";
 
 export type SessionStatus = Extract<
@@ -119,7 +119,7 @@ interface PendingPrompt {
   plan: ReadyPlan;
   prompt: string;
   action: SelectedAction | null;
-  /** Replay movement: same plan, same prompt; replays the sketch or restarts the run. */
+  /** Replay movement: same plan, same prompt, as a fresh run on the same connection. */
   replay: boolean;
 }
 
@@ -237,8 +237,8 @@ export class PreviewController {
   }
 
   /**
-   * Replays the active plan's movement on the running session (no new token): a motion sketch
-   * replays through the correction path; a static still needs a fresh run.
+   * Replays the active plan's movement on the running session (no new token): a fresh run on the
+   * same connection, from the still pose.
    */
   replayMovement(): void {
     const run = this.run;
@@ -258,7 +258,6 @@ export class PreviewController {
     if (hidden && this.hiddenSince === null) this.hiddenSince = performance.now();
     if (!hidden) this.hiddenSince = null;
     if (this.view.hidden !== hidden) this.update({ hidden });
-    if (!hidden && this.run) this.checkPolicy(this.run); // a held rotation runs now
   }
 
   /** Fresh output frames of the current run (clip capture). Returns an unsubscribe. */
@@ -305,11 +304,19 @@ export class PreviewController {
     return loaded;
   }
 
-  /** Token + lease, then connect -> reference -> prompt with the newest ready plan. */
+  /**
+   * Token + lease, then connect -> reference -> prompt with the newest ready plan. While the current
+   * plan waits on a clarification the server still accepts the plan on screen (its newest ready
+   * ancestor), so rotations and reconnects keep using it.
+   */
   private async open(run: Run): Promise<void> {
     const latest = this.props?.plan ?? null;
     const plan = isReadyPlan(latest) ? latest : run.activePlan;
-    if (!plan) return;
+    if (!plan) {
+      // Nothing ever fired and no plan is ready: say so instead of waiting forever.
+      await this.fail(STAGE_ERRORS.planNotReady);
+      return;
+    }
     const attempt = ++run.attempt;
     const current = () => this.run === run && run.attempt === attempt;
     const openedAt = performance.now();
@@ -486,10 +493,12 @@ export class PreviewController {
       outputSince: null,
       stats: { ...EMPTY_STATS, appliedMs: this.view.stats.appliedMs },
     });
-    // The reopen must not depend on the old session closing cleanly.
-    const closing = (old ? this.closeConnection(run, old) : Promise.resolve()).catch(
-      () => undefined,
-    );
+    // The reopen must not depend on the old session closing cleanly, or at all: after a network
+    // drop the SDK's disconnect can hang behind its own connect.
+    const closing = Promise.race([
+      (old ? this.closeConnection(run, old) : Promise.resolve()).catch(() => undefined),
+      new Promise<void>((resolve) => window.setTimeout(resolve, LIVE_POLICY.closeWaitMs)),
+    ]);
     run.wake = window.setTimeout(() => {
       run.wake = null;
       void closing.then(() => {
@@ -515,7 +524,8 @@ export class PreviewController {
         const next = this.pendingPrompt;
         this.pendingPrompt = null;
         this.update({ status: "updating" });
-        if (next.replay && conn.preview.motionProgram === null) {
+        // Replay, and any change on a sketched product, starts a fresh run from the still.
+        if (next.replay || conn.preview.sketches(next.action)) {
           if (!(await this.restartRun(run, conn, next))) return;
           continue;
         }
@@ -543,19 +553,39 @@ export class PreviewController {
     }
   }
 
-  /** Replay on a static still: a fresh run on the same connection. False when the pump must end. */
+  /**
+   * A fresh run on the same connection (Replay, or a new plan on a sketched product). False when
+   * the pump must end.
+   */
   private async restartRun(run: Run, conn: Connection, next: PendingPrompt): Promise<boolean> {
     this.update({ outputSince: null });
     let runId: number;
     try {
-      runId = await conn.preview.restartRun(run.referenceBlob, next.prompt);
-    } catch {
+      runId = await conn.preview.restartRun(run.referenceBlob, next.prompt, next.action);
+    } catch (err) {
+      if (run.conn !== conn) return false;
+      const declined = err instanceof PreviewFailure && err.step === "prompt";
+      if (declined && !next.replay && run.activePlan) {
+        // X2 refused the new plan after the reset: bring the previous movement back.
+        this.update({ notice: CORRECTION_DECLINED });
+        this.pendingPrompt ??= {
+          plan: run.activePlan,
+          prompt: conn.prompt,
+          action: actionOf(run.activePlan),
+          replay: true,
+        };
+        return true;
+      }
       // reset() already stopped generation: recover with a fresh connection.
-      if (run.conn === conn) this.reconnect(run, "dropped");
+      this.reconnect(run, "dropped");
       return false;
     }
     if (run.conn !== conn) return false;
     conn.prompt = next.prompt;
+    if (!next.replay) {
+      run.activePlan = next.plan;
+      this.update({ activePlanId: next.plan.id });
+    }
     if (!this.pendingPrompt) await this.waitFrame((f) => f.runId === runId);
     return true;
   }

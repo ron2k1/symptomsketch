@@ -4,13 +4,14 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { after, before, test } from "node:test";
 import type {
+  PlannerResult,
   PreviewLeaseResponse,
   ReactorTokenResponse,
   TakeResponse,
 } from "@symptomsketch/contracts";
 import { newId, now } from "../db/index.ts";
 import { getCurrentAssessment, getTakeAssessment } from "../domain/assessments.ts";
-import { type AiHarness, readyCase, reqId, startAiServer } from "./ai-harness.ts";
+import { type AiHarness, plan, plannerOut, readyCase, reqId, startAiServer } from "./ai-harness.ts";
 import { type Browser, errorCode, sha256 } from "./core-harness.ts";
 
 let h: AiHarness;
@@ -75,6 +76,78 @@ test("reactor token: lease capacity, per-session supersede, heartbeat, release, 
     action: "heartbeat",
   });
   assert.equal(foreign.status, 404);
+});
+
+/** Frees every live slot (earlier tests leave leases inside their 30 s TTL). */
+function releaseAllLeases(): void {
+  h.srv.ctx.db.prepare("UPDATE leases SET released_at = ? WHERE released_at IS NULL").run(now());
+}
+
+test("reactor token: a pending clarification keeps the last ready plan previewable", async () => {
+  releaseAllLeases();
+  const a = await readyCase(h);
+  const asked = await plan(
+    h,
+    a.b,
+    a.caseId,
+    { parentPlanId: a.planId, correction: "It goes somewhere after it stops." },
+    plannerOut({ clarificationQuestion: "Which way does it move", clarificationBlocking: true }),
+  );
+  assert.equal(asked.status, 201);
+  const pending = ((await asked.json()) as PlannerResult).planRevision;
+  assert.equal(pending.status, "needs_clarification");
+  // The running preview rotates and reconnects with the last ready plan while the question waits.
+  assert.equal((await token(a.b, a.caseId, a.planId)).status, 200);
+  // The unanswered revision itself still cannot start a preview.
+  assert.equal((await token(a.b, a.caseId, pending.id)).status, 409);
+
+  const answered = await plan(h, a.b, a.caseId, {
+    parentPlanId: pending.id,
+    correction: "Backward.",
+    isClarificationAnswer: true,
+  });
+  assert.equal(answered.status, 201);
+  const ready = ((await answered.json()) as PlannerResult).planRevision;
+  assert.equal(ready.status, "ready");
+  // A newer ready plan supersedes the old one.
+  const stale = await token(a.b, a.caseId, a.planId);
+  assert.equal(stale.status, 409);
+  assert.equal(await errorCode(stale), "PLAN_CONFLICT");
+  assert.equal((await token(a.b, a.caseId, ready.id)).status, 200);
+});
+
+test("preview lease: a late heartbeat revives a lapsed lease only while its slot is free", async () => {
+  releaseAllLeases();
+  const a = await readyCase(h);
+  const ta = (await (await token(a.b, a.caseId, a.planId)).json()) as ReactorTokenResponse;
+  const lapse = () =>
+    h.srv.ctx.db
+      .prepare("UPDATE leases SET expires_at = ? WHERE id = ?")
+      .run(new Date(Date.now() - 1_000).toISOString(), ta.leaseId);
+  const heartbeat = async () =>
+    (await (
+      await a.b.json(`/api/cases/${a.caseId}/preview-lease`, "POST", {
+        leaseId: ta.leaseId,
+        action: "heartbeat",
+      })
+    ).json()) as PreviewLeaseResponse;
+
+  // The browser stalled past the TTL while its X2 session kept running: carry on.
+  lapse();
+  const revived = await heartbeat();
+  assert.equal(revived.active, true);
+  assert.ok(Date.parse(revived.expiresAt!) > Date.now());
+
+  // Lapsed again, and meanwhile two other sessions took both demo slots: stop.
+  lapse();
+  const b = await readyCase(h);
+  const c = await readyCase(h);
+  assert.equal((await token(b.b, b.caseId, b.planId)).status, 200);
+  assert.equal((await token(c.b, c.caseId, c.planId)).status, 200);
+  assert.equal((await heartbeat()).active, false);
+  // Stopped for good: the lease was released, so a free slot later does not bring it back.
+  releaseAllLeases();
+  assert.equal((await heartbeat()).active, false);
 });
 
 /** Insert a ready take whose final MP4 file exists on disk (labeled test bytes, not a video). */

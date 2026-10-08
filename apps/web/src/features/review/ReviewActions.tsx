@@ -41,7 +41,7 @@ export function ReviewActions({ take, onTakeUpdated, onDecision, onConflict }: R
   if (!take.sha256) acceptBlocked = "This take is not ready yet.";
   else if (checking) acceptBlocked = "Wait for the visual check to finish.";
   else if (uiStatus === "needs_revision") {
-    acceptBlocked = "The check found a mismatch. Keep refining and record a new take.";
+    acceptBlocked = "The check found a mismatch. Keep refining, then clip a new take.";
   } else if (isSolution && uiStatus !== "matches") {
     acceptBlocked =
       "An instructional take can be confirmed only when every required step appears consistent.";

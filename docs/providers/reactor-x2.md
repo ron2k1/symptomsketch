@@ -473,9 +473,12 @@ How the app does it:
   150 ms after the last move. `reset()` puts the source back to the still, cancels pending pointer
   sends and releases the pointer. It then waits until no new output frame has arrived for 700 ms
   (2.5 s at most), because frames of the previous run can arrive after reset. Frames that arrive
-  less than 250 ms after `setPrompt` are not counted as the run's first frame. A correction with a
-  new action replays the program from the still pose. Live preview and Record next take share this
-  path, because both go through `fire()`.
+  less than 250 ms after `setPrompt` are not counted as the run's first frame. Replay movement and
+  every plan change on a sketched product restart the run on the same connection (`reset()`, the
+  reference, then `fire()`), so the program plays from the still pose of a fresh run. Replaying the
+  sketch mid-run, over X2's own history of the moved product, left the vacuum in place with a
+  semi-transparent copy behind it in 3 of 3 clips (live check 2026-10-08, critic needs_revision
+  each time). Static stills keep the mid-run `setPrompt` correction.
 
 Live check in the app (2026-10-08, robot vacuum, real Gemini plan "jerks backward, exactly once",
 magnitude null, so 0.08 over 1.5 s): live preview x 0.555 to 0.630 at about 2.5 s after the first

@@ -56,6 +56,25 @@ export function currentPlanId(row: AiCaseRow, purpose: Purpose): string | null {
   return purpose === "problem" ? row.problem_plan_id : row.solution_plan_id;
 }
 
+/**
+ * The plan a live preview may run for `purpose`: the current plan when it is ready, else its newest
+ * ready ancestor. A clarification question or an invalid revision becomes the current plan without
+ * a prompt, so a running preview keeps rotating and reconnecting with the last ready plan until a
+ * newer one is ready.
+ */
+export function previewPlanId(db: Db, row: AiCaseRow, purpose: Purpose): string | null {
+  const seen = new Set<string>();
+  let id = currentPlanId(row, purpose);
+  while (id && !seen.has(id)) {
+    seen.add(id);
+    const plan = getPlanRow(db, id);
+    if (!plan) return null;
+    if (plan.status === "ready" && plan.reactor_prompt) return plan.id;
+    id = plan.parent_id;
+  }
+  return null;
+}
+
 // ---- product reference ----
 
 export interface ProductRefRow {

@@ -163,11 +163,15 @@ export function ProductPanel({ purpose, showAccount, procedure }: ProductPanelPr
           <h3 id="original-account" className="hud-label">
             Original account
           </h3>
-          <p className="whitespace-pre-wrap text-sm">{caseData.originalAccount}</p>
+          <p className="whitespace-pre-wrap font-voice text-[15px] leading-relaxed">
+            {caseData.originalAccount}
+          </p>
           {caseData.actionsTried ? (
             <>
               <p className="hud-label pt-1">What I tried</p>
-              <p className="whitespace-pre-wrap text-sm">{caseData.actionsTried}</p>
+              <p className="whitespace-pre-wrap font-voice text-[15px] leading-relaxed">
+                {caseData.actionsTried}
+              </p>
             </>
           ) : null}
           <p className="text-[11px] text-muted-foreground">Kept exactly as written.</p>

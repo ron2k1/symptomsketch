@@ -10,20 +10,21 @@ export interface StageStatsProps {
   planCached: boolean;
   /** performance.now() of the explicit Start; the uptime spans reconnects. */
   startedAt: number | null;
-  reconnecting: boolean;
+  /** "live" only once X2 output is on stage. */
+  phase: "connecting" | "reconnecting" | "live";
 }
+
+const PHASE_LABEL: Record<StageStatsProps["phase"], string> = {
+  connecting: "X2 connecting",
+  reconnecting: "X2 reconnecting",
+  live: "X2 live",
+};
 
 /**
  * Live Reactor X2 numbers in the Reactor face. Only measured values render: fps and round trip
  * from WebRTC stats, X2's prompt acceptance time, the planner request time, the session uptime.
  */
-export function StageStats({
-  stats,
-  plannedMs,
-  planCached,
-  startedAt,
-  reconnecting,
-}: StageStatsProps) {
+export function StageStats({ stats, plannedMs, planCached, startedAt, phase }: StageStatsProps) {
   const sessionMs = useUptime(startedAt);
   const cells = readoutCells({ stats, plannedMs, planCached, sessionMs });
   if (cells.length === 0) return null;
@@ -37,11 +38,11 @@ export function StageStats({
         <span
           className={cn(
             "size-1.5 rounded-full bg-reactor-signal",
-            !reconnecting && "animate-pulse",
+            phase === "live" && "animate-pulse",
           )}
           aria-hidden
         />
-        {reconnecting ? "X2 reconnecting" : "X2 live"}
+        {PHASE_LABEL[phase]}
       </span>
       <dl className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
         {cells.map((c) => (
