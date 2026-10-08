@@ -19,6 +19,7 @@ model that makes the reenactment clips; Vidu S2 Avatar is only this call. Code:
 | Stored transcripts                      | `apps/server/src/support/call-transcripts.ts`              |
 | Browser call (SDK)                      | `apps/web/src/features/support/support-call-controller.ts` |
 | Call UI / staff transcript view         | `SupportCall.tsx` / `CallTranscripts.tsx` (same folder)    |
+| Background avatar prep (first call)     | `sam-prep.ts` / `useSamPrep.ts` (same folder)              |
 
 ## Token
 
@@ -75,6 +76,37 @@ ticket re-attaches in about a second. `main_video` reported 640x360 at the momen
 and 864x1184 a few seconds later; the UI frames it at 864:1152 with `object-cover`. One console
 warning at connect ("unparseable data message: failed to decode Protobuf message") had no visible
 effect.
+
+## Background prep (first call, verified live 2026-10-08 ~13:05-13:14 ET)
+
+The first call used to wait out `create_avatar` after the click. Now the same real work runs
+earlier and the click only re-attaches:
+
+- Composite: Nano Banana starts when a fixture case is created (or a product photo is confirmed),
+  cached by the photo's sha256 plus the product label, so the same photo and label are never
+  generated twice. The ticket path joins or reuses that result; the ticket-send warm stays as the
+  backup.
+- Avatar: once a ticket exists, the Support tab (`useSamPrep`) runs brief, portrait, then a hidden
+  Vidu session through the normal token route: connect, `uploadFile`, `createAvatar`,
+  `avatar_ready`, `PUT .../support-call/avatar` with the portrait source, disconnect. One prep per
+  page (single flight), and clicking Talk stops it (its session disconnects). A base-portrait build
+  re-checks the portrait twice (5 s apart) and rebuilds once if the composite lands. The status line
+  shows the real step and elapsed time, then "Sam is ready"; a failure says Talk still builds the
+  avatar itself.
+
+Three scripted runs on a local stack (API-driven Robot vacuum case and ticket with a synthetic take,
+then the real Support tab in headless Chromium):
+
+| Run | Composite                       | Prep `create_avatar` | Ticket to "Sam is ready" | Click to video | Click to Live |
+| --- | ------------------------------- | -------------------- | ------------------------ | -------------- | ------------- |
+| 1   | at ticket send, 11.4 s          | 55.5 s               | 70.3 s                   | 5.6 s          | not timed     |
+| 2   | at case creation, 13.2 s        | 39.5 s               | 65.7 s                   | 3.1 s          | not timed     |
+| 3   | reused (same photo + label key) | 1.9 s                | 15.4 s                   | 3.0 s          | 6.2 s         |
+
+Click to video is `videoWidth > 0` on Sam's `<video>`; Live is the call's own phase label. Run 3's
+1.9 s `create_avatar` was a real call on identical portrait bytes; whether Reactor reuses an
+identical upload is not verified. Token, connect and upload took about 3-18 s of each prep before
+`create_avatar` started.
 
 ## Behaviour that is not what the d.ts suggests
 

@@ -8,7 +8,15 @@
 // that a retry cannot fix (no product photo, a safety block) keeps the base portrait for good.
 // The only generated person is the fictional agent. The customer's product photo is passed as is
 // and is not screened for people.
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import { LIMITS, type SupportCallPortraitSource } from "@symptomsketch/contracts";
@@ -22,7 +30,8 @@ import {
 } from "../providers/nano-banana.ts";
 import { getLiveAsset } from "./accepted-take.ts";
 import { parseSnapshot } from "./dto.ts";
-import type { AttachmentRow, TicketRow } from "./rows.ts";
+import type { AssetRow, AttachmentRow, CaseRow, ProductRevisionRow, TicketRow } from "./rows.ts";
+import { fixtureName } from "./snapshot.ts";
 import { resolveStoragePath } from "./storage.ts";
 
 /** Same aspect as the avatar's 864x1152 output. */
@@ -135,11 +144,9 @@ export function ticketPortrait(ctx: AppContext, ticket: TicketRow): Promise<Tick
   if (running) return running;
   const work = (async (): Promise<TicketPortrait> => {
     try {
-      const jpeg = await compositeForTicket(ctx, ticket);
+      const shared = await compositeForReference(ctx, ticketReference(ctx, ticket));
       mkdirSync(dir, { recursive: true });
-      const tmp = path.join(ctx.paths.tmp, `${ticket.id}-${Date.now()}.jpg`);
-      writeFileSync(tmp, jpeg);
-      renameSync(tmp, composite);
+      copyFileSync(shared, composite);
       return { path: composite, source: "composite" };
     } catch (err) {
       const e = err as { code?: string; reason?: string; httpStatus?: number | null };
@@ -198,7 +205,13 @@ export function warmTicketPortrait(ctx: AppContext, ticketId: string): void {
   if (ticket) void ticketPortrait(ctx, ticket).catch(() => undefined);
 }
 
-async function compositeForTicket(ctx: AppContext, ticket: TicketRow): Promise<Buffer> {
+/** One product photo + label: the input a composite is generated from. */
+interface ProductReference {
+  asset: AssetRow;
+  label: string;
+}
+
+function ticketReference(ctx: AppContext, ticket: TicketRow): ProductReference {
   const grant = getRow<AttachmentRow>(
     ctx.db,
     `SELECT * FROM ticket_attachments WHERE ticket_id = ? AND purpose = 'customer_reference'
@@ -209,21 +222,82 @@ async function compositeForTicket(ctx: AppContext, ticket: TicketRow): Promise<B
   if (!grant || !asset || asset.sha256 !== grant.sha256) {
     throw Object.assign(new Error("no product reference"), { code: "NOT_FOUND" });
   }
-  const product = readFileSync(resolveStoragePath(ctx, asset.storage_path));
-  const agent = readFileSync(basePortraitPath(ctx));
-  const snapshot = parseSnapshot(ticket);
-  const started = Date.now();
-  const image = await nanoBananaFor(ctx).generateImage({
-    prompt: compositePrompt(snapshot.productLabel),
-    images: [imagePart(agent, "image/jpeg"), imagePart(product, imageMime(asset.mime))],
-    aspectRatio: PORTRAIT_ASPECT_RATIO,
-    timeoutMs: LIMITS.supportCallPortraitGenerateTimeoutMs,
-  });
-  console.log(
-    `[support-call] portrait composite ticket=${ticket.id} model=${image.modelId} ` +
-      `ms=${Date.now() - started}`,
-  );
-  return toPortraitJpeg(image.bytes);
+  return { asset, label: parseSnapshot(ticket).productLabel };
+}
+
+/** Content key: the same photo bytes with the same product label are never generated twice. */
+export function referenceKey(sha256: string, label: string): string {
+  const labelHash = createHash("sha256").update(label.trim().slice(0, 120)).digest("hex");
+  return `ref-${sha256.slice(0, 32)}-${labelHash.slice(0, 12)}`;
+}
+
+const referenceInflight = new Map<string, Promise<string>>();
+
+/**
+ * The composite for one product reference, generated once (single flight) and cached by content
+ * key, so a case can start it before its ticket exists and the ticket reuses that same result.
+ */
+function compositeForReference(ctx: AppContext, ref: ProductReference): Promise<string> {
+  const key = referenceKey(ref.asset.sha256, ref.label);
+  const file = path.join(cacheDir(ctx), `${key}.jpg`);
+  if (existsSync(file)) return Promise.resolve(file);
+  const running = referenceInflight.get(key);
+  if (running) return running;
+  const work = (async (): Promise<string> => {
+    const product = readFileSync(resolveStoragePath(ctx, ref.asset.storage_path));
+    const agent = readFileSync(basePortraitPath(ctx));
+    const started = Date.now();
+    const image = await nanoBananaFor(ctx).generateImage({
+      prompt: compositePrompt(ref.label),
+      images: [imagePart(agent, "image/jpeg"), imagePart(product, imageMime(ref.asset.mime))],
+      aspectRatio: PORTRAIT_ASPECT_RATIO,
+      timeoutMs: LIMITS.supportCallPortraitGenerateTimeoutMs,
+    });
+    console.log(
+      `[support-call] portrait composite ref=${key} model=${image.modelId} ` +
+        `ms=${Date.now() - started}`,
+    );
+    const jpeg = await toPortraitJpeg(image.bytes);
+    mkdirSync(cacheDir(ctx), { recursive: true });
+    const tmp = path.join(ctx.paths.tmp, `${key}-${Date.now()}.jpg`);
+    writeFileSync(tmp, jpeg);
+    renameSync(tmp, file);
+    return file;
+  })().finally(() => referenceInflight.delete(key));
+  referenceInflight.set(key, work);
+  return work;
+}
+
+/**
+ * Start the composite as soon as a case has its product photo (case creation), before any ticket
+ * exists. Same content key as the ticket path, so the ticket reuses this result. Never throws.
+ */
+export function warmCasePortrait(ctx: AppContext, caseId: string): void {
+  if (!ctx.config.geminiApiKey && !clients.has(ctx)) return;
+  try {
+    const caseRow = getRow<CaseRow>(ctx.db, "SELECT * FROM cases WHERE id = ?", caseId);
+    if (!caseRow?.product_revision_id) return;
+    const product = getRow<ProductRevisionRow>(
+      ctx.db,
+      "SELECT * FROM product_revisions WHERE id = ? AND case_id = ?",
+      caseRow.product_revision_id,
+      caseId,
+    );
+    const asset = product ? getLiveAsset(ctx.db, product.normalized_asset_id) : null;
+    if (!product || !asset || asset.case_id !== caseId) return;
+    const label =
+      fixtureName(ctx, product.fixture_id) ??
+      caseRow.model_label ??
+      product.model_label ??
+      "Uploaded product";
+    void compositeForReference(ctx, { asset, label }).catch((err: { code?: string }) => {
+      console.warn(
+        `[support-call] case portrait warm failed case=${caseId} code=${err.code ?? "-"}`,
+      );
+    });
+  } catch {
+    // Best effort: the ticket-send trigger and the call path still generate it.
+  }
 }
 
 function imageMime(mime: string): GeminiImageMime {

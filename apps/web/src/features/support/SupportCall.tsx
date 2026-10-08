@@ -17,6 +17,8 @@ import {
   type CallEnded,
   type CallView,
 } from "./support-call-model";
+import { prepStatusText } from "./sam-prep";
+import { samPrep, useSamPrep } from "./useSamPrep";
 
 export function SupportCallCredits({ className }: { className?: string }) {
   return (
@@ -88,6 +90,8 @@ export function SupportCall({ ticketId, onEnded }: SupportCallProps) {
   const view = mine ? call.view : INITIAL_CALL_VIEW;
   const saveState = mine ? call.saveState : "idle";
   const elsewhere = !mine && call.view.phase !== "idle" && call.view.phase !== "ended";
+  const prep = useSamPrep(ticketId);
+  const prepText = prepStatusText(prep.view, prep.now, SUPPORT_CALL_AGENT_NAME);
   const [draft, setDraft] = useState("");
   const idle = view.phase === "idle";
   const live = view.phase === "live";
@@ -108,6 +112,8 @@ export function SupportCall({ ticketId, onEnded }: SupportCallProps) {
   );
 
   function start() {
+    // A real call takes over: background prep stops and its hidden session disconnects.
+    samPrep.stop(ticketId);
     call.start(ticketId);
   }
 
@@ -191,6 +197,23 @@ export function SupportCall({ ticketId, onEnded }: SupportCallProps) {
           {elsewhere ? (
             <p role="status" className="text-sm text-muted-foreground">
               A call with {SUPPORT_CALL_AGENT_NAME} is running on another ticket. End it first.
+            </p>
+          ) : null}
+          {idle && prep.view.ticketId === ticketId && prepText ? (
+            <p
+              role="status"
+              aria-live="polite"
+              data-testid="sam-prep-status"
+              className={cn(
+                "text-sm tabular-nums",
+                prep.view.phase === "ready"
+                  ? "text-primary"
+                  : prep.view.phase === "failed"
+                    ? "text-warning"
+                    : "text-muted-foreground",
+              )}
+            >
+              {prepText}
             </p>
           ) : null}
           {view.phase === "ended" && saveState !== "idle" ? (
