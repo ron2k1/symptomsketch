@@ -163,7 +163,7 @@ async function runPlanFlow(
   try {
     run = await runPlanner(geminiFor(ctx), {
       model: ctx.config.geminiTextModel,
-      thinkingLevel: ctx.config.geminiThinkingLevel,
+      thinkingLevel: ctx.config.plannerThinkingLevel,
       input: plannerInput,
     });
     built = buildActionPlan(run.output, {

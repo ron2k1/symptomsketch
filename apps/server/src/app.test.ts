@@ -58,6 +58,20 @@ test("GET /api/health reports db + config presence without values", async () => 
   assert.equal(JSON.stringify(body).includes("test-secret-not-real"), false);
 });
 
+test("planner effort defaults to low and is set apart from the critic level", () => {
+  const defaults = loadConfig({ NODE_ENV: "test" });
+  assert.equal(defaults.plannerThinkingLevel, "low");
+  assert.equal(defaults.geminiThinkingLevel, "medium");
+  const set = loadConfig({
+    NODE_ENV: "test",
+    GEMINI_PLANNER_THINKING_LEVEL: "high",
+    GEMINI_THINKING_LEVEL: "low",
+  });
+  assert.equal(set.plannerThinkingLevel, "high");
+  assert.equal(set.geminiThinkingLevel, "low");
+  assert.throws(() => loadConfig({ NODE_ENV: "test", GEMINI_PLANNER_THINKING_LEVEL: "minimal" }));
+});
+
 test("unknown /api route returns ApiError NOT_FOUND", async () => {
   const res = await fetch(`${base}/api/nope`);
   assert.equal(res.status, 404);
