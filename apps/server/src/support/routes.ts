@@ -14,6 +14,7 @@ import { now } from "../db/index.ts";
 import { requireSession, requireSupport } from "../http/session.ts";
 import { param, parseBody, parseWith } from "../http/validate.ts";
 import { loadTicketForSupport, loadTicketForViewer } from "./access.ts";
+import { warmTicketPortrait } from "./call-portrait.ts";
 import { registerSupportCall } from "./call-routes.ts";
 import { listInbox } from "./dto.ts";
 import { serveTicketAttachment } from "./media.ts";
@@ -45,6 +46,8 @@ export function register(router: Router, ctx: AppContext): void {
     const session = requireSession(req);
     const body = parseBody(CreateTicketRequest, req);
     const { ticket, created } = createTicket(ctx, session, param(req, "caseId"), body);
+    // Nano Banana's agent-holding-the-product portrait is ready before the first support call.
+    if (created) warmTicketPortrait(ctx, ticket.id);
     const out: TicketResponse = { ticket };
     res.status(created ? 201 : 200).json(out);
   });

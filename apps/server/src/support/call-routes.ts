@@ -21,7 +21,7 @@ import { GeminiError } from "../providers/gemini-client.ts";
 import { ReactorTokenError, mintReactorToken } from "../providers/reactor-token.ts";
 import { loadTicketForViewer } from "./access.ts";
 import { cachedPackage, ensureCallPackage, getCallRow } from "./call-brief.ts";
-import { portraitSettled, ticketPortrait } from "./call-portrait.ts";
+import { portraitForCall, portraitSettled } from "./call-portrait.ts";
 import { saveCallTranscript } from "./call-transcripts.ts";
 
 /** Exactly what the route asks the minter for; the JWT itself never leaves the response body. */
@@ -50,7 +50,8 @@ export function setSupportCallMinterFor(ctx: AppContext, minter: SupportCallMint
  * Demo Support only (loadTicketForViewer: anything else is a 404).
  *   POST ROUTES.ticketSupportCallToken -> SupportCallTokenResponse (max_sessions=1, ~300 s cap)
  *   POST ROUTES.ticketSupportCallBrief -> SupportCallBriefResponse (Gemini once per ticket, cached)
- *   GET  ROUTES.ticketSupportCallPortrait -> image/jpeg (Nano Banana composite, else base portrait)
+ *   GET  ROUTES.ticketSupportCallPortrait -> image/jpeg (Nano Banana composite when ready within
+ *        LIMITS.supportCallPortraitTimeoutMs, else PROVIDER_TIMEOUT; a failure is PROVIDER_FAILED)
  *   PUT  ROUTES.ticketSupportCallAvatar  SaveSupportCallAvatarRequest -> OkResponse
  *   POST ROUTES.ticketSupportCallTranscripts CreateSupportCallTranscriptRequest
  *        -> SupportCallTranscript (201 new, 200 replay of the same idempotency key)
@@ -116,9 +117,9 @@ export function registerSupportCall(router: Router, ctx: AppContext): void {
     if (!portraitSettled(ctx, ticket.id)) limiterFor(ctx).take("supportCallPortrait", session.id);
     let portrait: string;
     try {
-      portrait = await ticketPortrait(ctx, ticket);
+      portrait = await portraitForCall(ctx, ticket);
     } catch (err) {
-      throw providerError("portrait", ticket.id, err);
+      throw err instanceof AppError ? err : providerError("portrait", ticket.id, err);
     }
     await sendFileWithRange(res, portrait, "image/jpeg");
   });

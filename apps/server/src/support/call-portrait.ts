@@ -2,15 +2,19 @@
 // Base: one fictional agent generated once with Nano Banana by scripts/generate-support-agent.ts
 // and committed as apps/web/public/assets/support-agent.jpg. Per ticket: Nano Banana composites
 // that same fictional agent holding the customer's own product (the ticket's normalized reference
-// photo), cached on disk. A failed or slow composite is an error the customer can retry; the
-// call never silently swaps in the stock base portrait.
-// Never uses a real person's photo: the only person in any input is the generated agent.
+// photo), cached on disk. Generation starts when the ticket is sent (warmTicketPortrait), so the
+// composite is usually cached before the customer clicks "Talk to support now". A call that cannot
+// wait for it gets an honest PROVIDER_TIMEOUT (generation keeps going, so Retry finds it cached);
+// a failed composite is a provider error the customer can retry. The call never silently swaps in
+// the stock base portrait. The only generated person is the fictional agent. The customer's product
+// photo is passed as is and is not screened for people.
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import { LIMITS } from "@symptomsketch/contracts";
 import type { AppContext } from "../context.ts";
 import { getRow } from "../db/index.ts";
+import { AppError } from "../http/errors.ts";
 import { imagePart, type GeminiImageMime } from "../providers/gemini-client.ts";
 import {
   createNanoBanana,
@@ -98,9 +102,9 @@ export function portraitSettled(ctx: AppContext, ticketId: string): boolean {
 const inflight = new Map<string, Promise<string>>();
 
 /**
- * Path of this ticket's composite portrait. The first request per ticket generates it (single
- * flight, bounded by LIMITS.supportCallPortraitTimeoutMs); a failure rejects, nothing is cached,
- * and the next request (the customer's Retry) generates again.
+ * Path of this ticket's composite portrait, once generation settles. Generated once per ticket
+ * (single flight, bounded by LIMITS.supportCallPortraitGenerateTimeoutMs) and cached. A failure
+ * rejects, nothing is remembered, and the next request (the customer's Retry) generates again.
  */
 export function ticketPortrait(ctx: AppContext, ticket: TicketRow): Promise<string> {
   const dir = cacheDir(ctx);
@@ -124,6 +128,42 @@ export function ticketPortrait(ctx: AppContext, ticket: TicketRow): Promise<stri
   return work;
 }
 
+/**
+ * What a call gets now: the composite if it is ready within waitMs, else PROVIDER_TIMEOUT. A
+ * composite still generating keeps going and is cached, so the customer's Retry picks it up.
+ */
+export async function portraitForCall(
+  ctx: AppContext,
+  ticket: TicketRow,
+  waitMs: number = LIMITS.supportCallPortraitTimeoutMs,
+): Promise<string> {
+  const started = Date.now();
+  let timer: NodeJS.Timeout | undefined;
+  const late = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), waitMs);
+  });
+  try {
+    const ready = await Promise.race([ticketPortrait(ctx, ticket), late]);
+    if (ready) return ready;
+    console.warn(
+      `[support-call] portrait still generating ticket=${ticket.id} waited ms=${Date.now() - started}`,
+    );
+    throw new AppError("PROVIDER_TIMEOUT");
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Start the composite as soon as the ticket is sent, so it is usually cached before the first
+ * call. No-op without a Gemini key (or an injected test generator); never throws.
+ */
+export function warmTicketPortrait(ctx: AppContext, ticketId: string): void {
+  if (!ctx.config.geminiApiKey && !clients.has(ctx)) return;
+  const ticket = getRow<TicketRow>(ctx.db, "SELECT * FROM tickets WHERE id = ?", ticketId);
+  if (ticket) void ticketPortrait(ctx, ticket).catch(() => undefined);
+}
+
 async function compositeForTicket(ctx: AppContext, ticket: TicketRow): Promise<Buffer> {
   const grant = getRow<AttachmentRow>(
     ctx.db,
@@ -143,7 +183,7 @@ async function compositeForTicket(ctx: AppContext, ticket: TicketRow): Promise<B
     prompt: compositePrompt(snapshot.productLabel),
     images: [imagePart(agent, "image/jpeg"), imagePart(product, imageMime(asset.mime))],
     aspectRatio: PORTRAIT_ASPECT_RATIO,
-    timeoutMs: LIMITS.supportCallPortraitTimeoutMs,
+    timeoutMs: LIMITS.supportCallPortraitGenerateTimeoutMs,
   });
   console.log(
     `[support-call] portrait composite ticket=${ticket.id} model=${image.modelId} ` +
