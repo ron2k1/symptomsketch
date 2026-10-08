@@ -206,7 +206,7 @@ export class PreviewController {
     this.wire(s);
 
     try {
-      await s.preview.connect(token.jwt, ref.still, actionOf(plan));
+      await s.preview.connect(token.jwt, ref.still, actionOf(plan), plan.purpose);
       if (this.session !== s) return;
       s.connected = true;
       this.update({ status: "waiting_frames" });

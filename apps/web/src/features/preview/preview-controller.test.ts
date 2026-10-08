@@ -125,7 +125,12 @@ describe("PreviewController (spec 8 live preview)", () => {
     );
     const preview = h.instances[0]!;
     // No selectedAction on this plan: null -> static still (no motion sketch).
-    expect(preview.connect).toHaveBeenCalledWith("test-jwt-not-real", expect.anything(), null);
+    expect(preview.connect).toHaveBeenCalledWith(
+      "test-jwt-not-real",
+      expect.anything(),
+      null,
+      "problem",
+    );
     expect(preview.prepareRun).toHaveBeenCalledTimes(1);
     expect(preview.fire).toHaveBeenCalledWith("server compiled prompt one");
     expect(c.current).toMatchObject({ status: "waiting_frames", activePlanId: "plan_1" });
@@ -134,7 +139,7 @@ describe("PreviewController (spec 8 live preview)", () => {
     expect(c.current.status).toBe("live");
   });
 
-  it("hands plan.selectedAction to connect and to every correction (motion sketch)", async () => {
+  it("hands plan.selectedAction + purpose to connect and the action to every correction", async () => {
     const action = (direction: string) => ({
       subject: "robot vacuum",
       startingState: "still",
@@ -146,7 +151,11 @@ describe("PreviewController (spec 8 live preview)", () => {
       endingState: "stopped",
     });
     const withAction = (id: string, prompt: string, direction: string) =>
-      ({ ...plan(id, prompt), plan: { selectedAction: action(direction) } }) as PlanRevision;
+      ({
+        ...plan(id, prompt),
+        purpose: "solution", // a support demonstration sizes the sketch differently
+        plan: { selectedAction: action(direction) },
+      }) as PlanRevision;
     const c = new PreviewController(() => undefined);
     c.setProps({
       caseId: "case_1",
@@ -159,6 +168,7 @@ describe("PreviewController (spec 8 live preview)", () => {
       "test-jwt-not-real",
       expect.anything(),
       action("backward"),
+      "solution",
     );
     preview.frame(1, true);
     c.setProps({

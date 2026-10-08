@@ -39,6 +39,20 @@ describe("buildMotionProgram (motion-lab recipe)", () => {
     });
   });
 
+  it("a support demonstration (solution) uses the largest tested amplitude so the step reads", () => {
+    const step = action({
+      action: "drives forward a short way in a straight line",
+      direction: "forward",
+      magnitude: "a short way",
+    });
+    const problem = buildMotionProgram(step, DEMO_VACUUM_REGION, "problem")!;
+    const solution = buildMotionProgram(step, DEMO_VACUUM_REGION, "solution")!;
+    // The facing's major axis is 1, so |dx| is the amplitude.
+    expect(Math.abs(problem.dx)).toBeCloseTo(MOTION.defaultAmplitude, 4);
+    expect(Math.abs(solution.dx)).toBeCloseTo(MOTION.largeAmplitude, 4);
+    expect(buildMotionProgram(step, DEMO_VACUUM_REGION)).toEqual(problem); // default = problem
+  });
+
   it("falls back to safe defaults when every detail field is null", () => {
     const p = buildMotionProgram(
       action({

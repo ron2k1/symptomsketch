@@ -1,5 +1,5 @@
 import { X2Model, type FileRef, type X2StateUpdateMessage } from "@reactor-models/x2/core";
-import type { SelectedAction } from "@symptomsketch/contracts";
+import type { Purpose, SelectedAction } from "@symptomsketch/contracts";
 import { STAGE_HEIGHT, STAGE_WIDTH, type StillImage } from "./geometry";
 import {
   buildMotionProgram,
@@ -101,6 +101,7 @@ export class X2Preview {
   private closed = false;
   private region: ProductRegion | null = null;
   private motion: MotionProgram | null = null;
+  private purpose: Purpose = "problem";
   private keepBacklog: boolean | null = null;
   private firedAt = Number.NEGATIVE_INFINITY;
   private lastFreshAt = 0;
@@ -178,7 +179,9 @@ export class X2Preview {
     jwt: string,
     still: StillImage,
     action: SelectedAction | null = null,
+    purpose: Purpose = "problem",
   ): Promise<void> {
+    this.purpose = purpose; // a case is one purpose for its whole session
     try {
       await this.x2.connect(jwt);
     } catch (err) {
@@ -187,7 +190,7 @@ export class X2Preview {
     if (this.closed) throw new PreviewFailure("ABORTED", "connect");
     if (this.x2.getStatus() !== "ready") throw new PreviewFailure("INVALID_STATE", "connect");
     this.region = detectProductRegion(still);
-    this.motion = buildMotionProgram(action, this.region);
+    this.motion = buildMotionProgram(action, this.region, this.purpose);
     this.source = createStillSource(still, this.region);
     try {
       await this.x2.publishSource(this.source.track);
@@ -247,7 +250,7 @@ export class X2Preview {
     const ok = (await this.x2.setPrompt({ prompt })) !== undefined;
     if (ok && action !== undefined && !this.closed) {
       this.stopMotion();
-      this.motion = buildMotionProgram(action, this.region);
+      this.motion = buildMotionProgram(action, this.region, this.purpose);
       await this.syncBacklog();
       if (this.sawFresh) this.startMotion(performance.now());
     }

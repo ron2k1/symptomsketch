@@ -1,4 +1,4 @@
-import type { SelectedAction } from "@symptomsketch/contracts";
+import type { Purpose, SelectedAction } from "@symptomsketch/contracts";
 
 /**
  * Motion sketch (docs/providers/reactor-x2.md section 9): X2 does not move a product from prompt
@@ -177,6 +177,7 @@ export function durationFor(timing: string | null, action = ""): number {
 export function buildMotionProgram(
   action: SelectedAction | null,
   region: ProductRegion | null,
+  purpose: Purpose = "problem",
 ): MotionProgram | null {
   if (!action || !region) return null;
   const verb = action.action.toLowerCase();
@@ -191,7 +192,11 @@ export function buildMotionProgram(
   const { v, depth } = heading;
 
   const reps = Math.min(MOTION.maxRepetitions, Math.max(1, action.repetitions ?? 1));
-  const total = Math.min(MOTION.maxAmplitude, amplitudeFor(action.magnitude) * reps);
+  // A support demonstration has to read on camera. "A short way" in a procedure is the real-world
+  // distance; at the default amplitude X2 moved the vacuum ~3% of the frame and the critic saw it
+  // as standing still. A customer's report keeps the size they described.
+  const amplitude = purpose === "solution" ? MOTION.largeAmplitude : amplitudeFor(action.magnitude);
+  const total = Math.min(MOTION.maxAmplitude, amplitude * reps);
   const dur = durationFor(action.timing, action.action);
   const segments: MotionSegment[] = [];
   for (let i = 0; i < reps; i += 1) {
