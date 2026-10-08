@@ -8,6 +8,7 @@ import {
   SOURCE_TYPE_LABELS,
   type CaseTab,
 } from "@symptomsketch/contracts";
+import { BrandLogo } from "@/components/BrandLogo";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "./WorkspaceProvider";
 
@@ -49,15 +50,15 @@ export function WorkspaceHeader() {
   }
 
   return (
-    <header className="sticky top-0 z-30 border-b border-border bg-background/90 backdrop-blur">
+    <header className="sticky top-0 z-30 border-b border-border bg-surface/90 shadow-[var(--glow)] backdrop-blur">
       <div className="mx-auto flex min-h-16 max-w-[1600px] flex-wrap items-center gap-x-5 gap-y-2 px-4 py-2 md:px-6">
         <Link
           to={APP_PATHS.landing()}
-          className="font-mono text-lg font-semibold tracking-tight text-foreground"
+          className="text-foreground"
           aria-label="SymptomSketch home"
           onClick={(e) => captureBusy && e.preventDefault()}
         >
-          Symptom<span className="text-neon">Sketch</span>
+          <BrandLogo compact />
         </Link>
 
         {caseData ? (

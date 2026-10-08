@@ -43,6 +43,7 @@ Reactor X2 makes the moving visual; the human reviews the exact MP4.
 - Commits: imperative subject <= 70 chars + a why body, via `git commit -F <file>`. NO AI attribution
   of any kind (no Co-Authored-By, no Claude-Session trailer, no session URL). ron2k1 is sole author.
 - Never `taskkill /IM node.exe` (kills Claude Code). Stop dev servers by PID.
-- Theme: cyber palette from `apps/web/src/index.css` tokens only. No hard-coded hex in components.
+- Theme: the concept-mockup palette (warm white, white cards, forest green, sand stage frame) from
+  `apps/web/src/index.css` tokens only. No hard-coded hex in components.
 - Windows dev box: PowerShell primary. Bare `node --test` has no dir arg; server tests use
   `tsx --test "src/**/*.test.ts"`.

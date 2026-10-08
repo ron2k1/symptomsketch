@@ -3,8 +3,7 @@ import type { ReviewState, TicketAttachmentPurpose, TicketStatus } from "@sympto
 /** Shown on the customer Support tab (spec 5): honest scope of the demo queue. */
 export const SUPPORT_NOTICE = "Demo support inbox · No manufacturer is contacted.";
 
-/** Staff header on /support and /support/tickets/:id. */
-export const STAFF_HEADER_PRODUCT = "SymptomSketch";
+/** Staff header on /support and /support/tickets/:id (next to the BrandLogo wordmark). */
 export const STAFF_HEADER_AREA = "Demo Support workspace";
 
 /** Status copy the customer sees. "Received" only ever renders from a server-returned ticket. */

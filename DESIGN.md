@@ -7,7 +7,7 @@ Users: a customer (robot vacuum "jerks backward once") and a support teammate in
 
 Components:
 
-1. Web (Vite/React): cyber landing hero with product rows, case workspace (Issue / Recreate /
+1. Web (Vite/React): mockup-style landing hero with product rows, case workspace (Issue / Recreate /
    Support), staff inbox.
 2. Server (Express): sessions, cases, Gemini planner + visual critic, Reactor token minting,
    ffmpeg export, tickets, SQLite + media under DATA_DIR.
