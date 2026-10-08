@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { ReactorQueueStrip, StoryTimeline } from "./StoryPanels";
 import { branchReadiness, isReady, playedBeats, shortClipId, type StoryState } from "./story-state";
 import { StorySendPanel } from "./StorySendPanel";
+import { StoryStartControls } from "./StoryStartControls";
 import { useStory } from "./useStory";
 import { useStoryRecorder } from "./useStoryRecorder";
 
@@ -84,14 +85,22 @@ export function StoryPage() {
             Opening your case
           </p>
         ) : (
-          <StoryWorkspace caseId={caseId} caseData={caseData} />
+          <StoryWorkspace caseId={caseId} caseData={caseData} onCaseChange={setCaseData} />
         )}
       </main>
     </div>
   );
 }
 
-function StoryWorkspace({ caseId, caseData }: { caseId: string; caseData: CaseDetail }) {
+function StoryWorkspace({
+  caseId,
+  caseData,
+  onCaseChange,
+}: {
+  caseId: string;
+  caseData: CaseDetail;
+  onCaseChange(next: CaseDetail): void;
+}) {
   const photoUrl = caseData.product?.normalized.mediaUrl ?? null;
   const story = useStory(caseId, photoUrl);
   const recorder = useStoryRecorder(story.stream, story.state.playingId);
@@ -150,7 +159,7 @@ function StoryWorkspace({ caseId, caseData }: { caseId: string; caseData: CaseDe
             aria-label="Story stage: live FastH3 video with sound"
           />
           {phase === "idle" || phase === "error" ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-foreground/80 p-6 text-center text-background">
+            <div className="absolute inset-0 flex flex-col items-center justify-center-safe gap-3 overflow-y-auto bg-foreground/80 p-6 text-center text-background">
               {phase === "error" && story.fatal ? (
                 <p role="alert" className="max-w-md text-sm">
                   {story.fatal.message}
@@ -162,21 +171,16 @@ function StoryWorkspace({ caseId, caseData }: { caseId: string; caseData: CaseDe
                 </p>
               )}
               {phase === "idle" ? (
-                <Button
-                  type="button"
-                  size="lg"
-                  className="min-h-11"
-                  onClick={onStart}
-                  disabled={!photoUrl}
-                >
-                  Start the story
-                </Button>
+                <StoryStartControls
+                  caseData={caseData}
+                  onCaseChange={onCaseChange}
+                  onStart={onStart}
+                />
               ) : story.fatal?.retry ? (
                 <Button type="button" size="lg" className="min-h-11" onClick={onRetry}>
                   Retry
                 </Button>
               ) : null}
-              {!photoUrl ? <p className="text-xs">Add a product photo to the case first.</p> : null}
             </div>
           ) : null}
           {phase === "live" || phase === "starting" ? (
