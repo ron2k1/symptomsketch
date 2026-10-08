@@ -2,7 +2,10 @@
  * Recreate layout (spec 6 desktop composition + tablet/mobile). Layout only: every color comes
  * from the theme tokens in src/index.css.
  *   < 1180px: one column; product shelf (collapsible), stage, conversation, take shelf.
- *  >= 1180px: 232px product shelf | flexible stage + take shelf | 336px conversation.
+ *  >= 1180px: 216px product shelf | flexible stage + take shelf | 320px conversation.
+ *  Theater (data-theater: Reactor X2 session active or a take on stage), >= 1180px:
+ *    the product shelf folds into a chip row above the stage and the stage takes every pixel
+ *    left of a 304px conversation column.
  */
 .ws-recreate {
   display: grid;
@@ -34,11 +37,30 @@
 
 @media (min-width: 1180px) {
   .ws-recreate {
-    grid-template-columns: 232px minmax(0, 1fr) 336px;
+    grid-template-columns: 216px minmax(0, 1fr) 320px;
     grid-template-rows: auto 1fr;
     grid-template-areas:
       "product stage conversation"
       "product takes conversation";
     align-items: start;
+  }
+
+  .ws-recreate[data-theater] {
+    column-gap: 20px;
+    row-gap: 12px;
+    grid-template-columns: minmax(0, 1fr) 304px;
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      "product conversation"
+      "stage conversation"
+      "takes conversation";
+  }
+
+  /* Keep the essentials in view next to a tall stage. */
+  .ws-recreate[data-theater] .ws-area-conversation {
+    position: sticky;
+    top: 88px;
+    max-height: calc(100vh - 104px);
+    overflow-y: auto;
   }
 }

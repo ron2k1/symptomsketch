@@ -20,7 +20,14 @@ import { ReviewPanel } from "@/features/review/ReviewPanel";
 import { ConversationPanel } from "./ConversationPanel";
 import { ModeToggle } from "./ModeToggle";
 import { ProductPanel } from "./ProductPanel";
-import { currentPlan, planById, previewablePlan, procedureFor, takesFor } from "./state";
+import {
+  currentPlan,
+  isTheaterLayout,
+  planById,
+  previewablePlan,
+  procedureFor,
+  takesFor,
+} from "./state";
 import { TakeShelf } from "./TakeShelf";
 import { useWorkspace } from "./WorkspaceProvider";
 
@@ -125,6 +132,9 @@ export function RecreateTab() {
   else badge = PREVIEW_STATUS_COPY[state.previewStatus];
   const live =
     !readyTake && (state.previewStatus === "live" || state.previewStatus === "recording");
+  // Theater: while Reactor X2 is on stage (or a take is shown) the stage takes the width and the
+  // product shelf folds into a compact chip above it (see workspace.css).
+  const theater = isTheaterLayout(state.previewStatus, selectedTake !== null);
 
   const selectedPlan = selectedTake ? planById(caseData, selectedTake.planRevisionId) : null;
   const selectedOriginal = selectedTake
@@ -132,11 +142,19 @@ export function RecreateTab() {
     : null;
 
   return (
-    <div className="ws-recreate">
-      <aside className="ws-area-product rounded-[var(--radius-card)] border border-border bg-card p-4">
+    <div className="ws-recreate" data-theater={theater ? "" : undefined}>
+      <aside
+        className={cn(
+          "ws-area-product rounded-[var(--radius-card)] border border-border bg-card",
+          theater ? "px-3 py-1.5" : "p-4",
+        )}
+      >
         <button
           type="button"
-          className="flex min-h-11 w-full items-center gap-3 text-left min-[1180px]:hidden"
+          className={cn(
+            "flex min-h-11 w-full items-center gap-3 text-left",
+            !theater && "min-[1180px]:hidden",
+          )}
           aria-expanded={shelfOpen}
           aria-controls="product-shelf-body"
           onClick={() => setShelfOpen((o) => !o)}
@@ -149,6 +167,11 @@ export function RecreateTab() {
             />
           ) : null}
           <span className="min-w-0 flex-1 truncate text-sm font-medium">{ws.productLabel}</span>
+          {theater ? (
+            <span className="hidden text-[12.5px] text-muted-foreground sm:inline">
+              {shelfOpen ? "Hide product" : "Product details"}
+            </span>
+          ) : null}
           <ChevronDown
             className={cn("size-4 transition-transform", shelfOpen && "rotate-180")}
             aria-hidden
@@ -157,8 +180,8 @@ export function RecreateTab() {
         <div
           id="product-shelf-body"
           className={cn(
-            shelfOpen ? "mt-4 block" : "hidden",
-            "min-[1180px]:mt-0 min-[1180px]:block",
+            shelfOpen ? (theater ? "mt-3 mb-2 block" : "mt-4 block") : "hidden",
+            !theater && "min-[1180px]:mt-0 min-[1180px]:block",
           )}
         >
           <ProductPanel purpose={purpose} showAccount procedure={procedureFor(caseData, plan)} />
@@ -246,7 +269,7 @@ export function RecreateTab() {
       </section>
 
       <aside className="ws-area-conversation min-w-0 rounded-[var(--radius-card)] border border-border bg-card p-4">
-        <ConversationPanel purpose={purpose} />
+        <ConversationPanel purpose={purpose} compact={theater} />
       </aside>
 
       <div className="ws-area-takes min-w-0">

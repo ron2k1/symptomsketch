@@ -98,8 +98,17 @@ function Explanation({ plan }: { plan: PlanRevision }) {
   );
 }
 
-/** Right panel "Describe and refine" (spec 6 conversation). */
-export function ConversationPanel({ purpose }: { purpose: Purpose }) {
+/**
+ * Right panel "Describe and refine" (spec 6 conversation). `compact` (theater layout, Reactor X2
+ * on stage) keeps the essentials open: a shorter history, the planner explanation folded away.
+ */
+export function ConversationPanel({
+  purpose,
+  compact = false,
+}: {
+  purpose: Purpose;
+  compact?: boolean;
+}) {
   const ws = useWorkspace();
   const { state, dispatch, captureBusy } = ws;
   const descRef = useRef<CurrentDescriptionHandle>(null);
@@ -143,7 +152,13 @@ export function ConversationPanel({ purpose }: { purpose: Purpose }) {
       </h2>
 
       {messages.length > 0 ? (
-        <ol className="max-h-[420px] space-y-2.5 overflow-y-auto pr-1" aria-label="Conversation">
+        <ol
+          className={cn(
+            "space-y-2.5 overflow-y-auto pr-1",
+            compact ? "max-h-[260px]" : "max-h-[420px]",
+          )}
+          aria-label="Conversation"
+        >
           {messages.map((m) => (
             <MessageItem key={m.id} message={m} onSelectField={onSelectField} />
           ))}
@@ -167,7 +182,18 @@ export function ConversationPanel({ purpose }: { purpose: Purpose }) {
         </p>
       ) : null}
 
-      {plan ? <Explanation plan={plan} /> : null}
+      {plan && compact ? (
+        <details className="group rounded-xl border border-border bg-card">
+          <summary className="flex min-h-11 cursor-pointer items-center px-3 text-sm font-medium">
+            What the planner understood
+          </summary>
+          <div className="px-1 pb-1">
+            <Explanation plan={plan} />
+          </div>
+        </details>
+      ) : plan ? (
+        <Explanation plan={plan} />
+      ) : null}
 
       {question ? (
         <div className="flex gap-2 rounded-xl border border-magenta/50 bg-magenta-soft p-3 text-sm">

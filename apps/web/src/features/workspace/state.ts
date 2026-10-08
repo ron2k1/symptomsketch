@@ -228,6 +228,15 @@ export function isCaptureBusy(status: PreviewStatus): boolean {
   return status === "armed" || status === "recording" || status === "uploading";
 }
 
+/**
+ * Theater layout: the Reactor stage takes the width while a session is starting, live, recording
+ * or failed on stage, and while a take (ready or still processing) is selected. Only a stopped
+ * preview with no take returns to the three-column layout.
+ */
+export function isTheaterLayout(status: PreviewStatus, takeSelected: boolean): boolean {
+  return takeSelected || status !== "idle";
+}
+
 export function currentPlanId(c: CaseDetail, purpose: Purpose): string | null {
   return purpose === "problem" ? c.problemPlanId : c.solutionPlanId;
 }
