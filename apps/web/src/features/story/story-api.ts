@@ -7,6 +7,8 @@ import {
   type StoryBeatsUpload,
   type StoryDirectorRequest,
   type StoryDirectorResponse,
+  type StoryEndingRequest,
+  type StoryEndingResponse,
   type StorySubmitResponse,
   type StoryTokenResponse,
   type TicketStoryResponse,
@@ -56,17 +58,20 @@ export const getStoryToken = (caseId: string) =>
 export const askDirector = (caseId: string, req: StoryDirectorRequest, signal?: AbortSignal) =>
   postJson<StoryDirectorResponse>(storyPaths.director(caseId), req, signal);
 
-/** The case's own normalized product photo (owner-authorized media URL). */
-export async function fetchPhoto(url: string): Promise<Blob> {
+/** An authorized media URL as a Blob (to upload as a FastH3 starting frame). */
+export async function fetchMedia(url: string, unreachable: string): Promise<Blob> {
   let res: Response;
   try {
     res = await fetch(url, { credentials: "same-origin" });
   } catch {
-    throw new ApiClientError("NETWORK_ERROR", "Could not load your product photo.", 0);
+    throw new ApiClientError("NETWORK_ERROR", unreachable, 0);
   }
   if (!res.ok) throw await failure(res);
   return res.blob();
 }
+
+/** The case's own normalized product photo (owner-authorized media URL). */
+export const fetchPhoto = (url: string) => fetchMedia(url, "Could not load your product photo.");
 
 /** The beats JSON sent with the reel: exactly the scenes that played and the cards offered. */
 export function beatsUpload(
@@ -107,3 +112,11 @@ export function sendStory(caseId: string, parts: StoryParts): Promise<StorySubmi
 
 export const getTicketStory = (ticketId: string, signal?: AbortSignal) =>
   storyFetch<TicketStoryResponse>(storyPaths.ticketStory(ticketId), { signal });
+
+/** P2, support only: a FastH3 token for the ending session of this ticket's story. */
+export const getEndingToken = (ticketId: string) =>
+  postJson<StoryTokenResponse>(storyPaths.endingToken(ticketId), {});
+
+/** P2, support only: Gemini turns support's fix into 1-2 ending scenes. */
+export const writeEnding = (ticketId: string, req: StoryEndingRequest, signal?: AbortSignal) =>
+  postJson<StoryEndingResponse>(storyPaths.endingDirector(ticketId), req, signal);

@@ -51,6 +51,24 @@ describe("TicketStorySection (staff ticket view)", () => {
     expect(scenes[2]!.textContent).toContain("STUB prompt 3");
   });
 
+  it("offers Write the ending only when the story has its last frame", async () => {
+    mockApi({
+      "GET /api/tickets/tkt_1/story": () => ({ status: 200, body: { story: STORY } }),
+    });
+    render(<TicketStorySection ticketId="tkt_1" />);
+    expect(await screen.findByRole("heading", { name: "Write the ending" })).toBeTruthy();
+    cleanup();
+    mockApi({
+      "GET /api/tickets/tkt_1/story": () => ({
+        status: 200,
+        body: { story: { ...STORY, frameUrl: null } },
+      }),
+    });
+    render(<TicketStorySection ticketId="tkt_1" />);
+    expect(await screen.findByText(/sent without its last frame/)).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Write the ending" })).toBeNull();
+  });
+
   it("renders nothing when the case has no story or the ticket is not readable", async () => {
     const fetchMock = mockApi({
       "GET /api/tickets/tkt_1/story": () => ({ status: 200, body: { story: null } }),

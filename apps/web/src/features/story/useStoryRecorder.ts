@@ -121,6 +121,23 @@ export function useStoryRecorder(stream: MediaStream | null, playingId: string |
     rec.stop();
   }, []);
 
+  /** Drop the last result before a new recording (one recorder reused for another session). */
+  const reset = useCallback(() => {
+    const rec = recRef.current;
+    recRef.current = null;
+    if (rec && rec.state !== "inactive") {
+      rec.onstop = null;
+      rec.ondataavailable = null;
+      rec.stop();
+    }
+    chunks.current = [];
+    playMs.current = 0;
+    playStart.current = null;
+    setRecording(false);
+    setFinishing(false);
+    setResult(null);
+  }, []);
+
   useEffect(
     () => () => {
       const rec = recRef.current;
@@ -130,7 +147,7 @@ export function useStoryRecorder(stream: MediaStream | null, playingId: string |
     [],
   );
 
-  return { recording, finishing, result, finish };
+  return { recording, finishing, result, finish, reset };
 }
 
 export type StoryRecorder = ReturnType<typeof useStoryRecorder>;

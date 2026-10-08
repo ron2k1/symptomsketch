@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { STORY_ACT_LABELS, storyActForBeat, type TicketStory } from "@symptomsketch/contracts";
 import { formatBytes, formatTimestamp } from "@/lib/format";
+import { StoryEndingPanel } from "./StoryEndingPanel";
 import { getTicketStory } from "./story-api";
 
 /** How often the open ticket checks for a story the customer sends while support is looking. */
@@ -88,6 +89,13 @@ export function TicketStorySection({ ticketId }: { ticketId: string }) {
           );
         })}
       </ol>
+      {story.frameUrl ? (
+        <StoryEndingPanel ticketId={ticketId} frameUrl={story.frameUrl} />
+      ) : (
+        <p className="border-t border-border pt-3 text-xs text-muted-foreground">
+          This story was sent without its last frame, so an ending cannot be written from it.
+        </p>
+      )}
     </section>
   );
 }
