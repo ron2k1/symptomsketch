@@ -383,6 +383,19 @@ describe("PreviewController (infinite live preview)", () => {
     });
   });
 
+  it("reconnects even when the dropped session never finishes closing", async () => {
+    const { c, preview } = await startLive();
+    preview.close.mockReturnValueOnce(new Promise<void>(() => undefined)); // hangs
+    h.createReactorToken.mockResolvedValueOnce({ ...TOKEN, leaseId: "lease_2" });
+    preview.emit("status", "disconnected");
+    await vi.advanceTimersByTimeAsync(1_000); // the backoff alone is not enough
+    expect(h.createReactorToken).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(h.createReactorToken).toHaveBeenCalledTimes(2);
+    h.instances.at(-1)!.frame(1, true);
+    expect(c.current).toMatchObject({ status: "live", reconnecting: false });
+  });
+
   it("gives up with an honest error after repeated drops without stable output", async () => {
     const { c } = await startLive();
     for (let i = 0; i < 3; i += 1) {

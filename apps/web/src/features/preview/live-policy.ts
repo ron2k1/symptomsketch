@@ -16,6 +16,8 @@ export const LIVE_POLICY = {
   reconnectBackoffMs: [1_000, 3_000, 8_000] as readonly number[],
   /** Fresh output this long after a reconnect resets the drop counter. */
   stableAfterMs: 30_000,
+  /** A reconnect waits at most this long for the old X2 session to close. */
+  closeWaitMs: 3_000,
 } as const;
 
 export type LivePolicy = typeof LIVE_POLICY;

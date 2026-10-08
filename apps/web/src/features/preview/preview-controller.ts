@@ -493,10 +493,12 @@ export class PreviewController {
       outputSince: null,
       stats: { ...EMPTY_STATS, appliedMs: this.view.stats.appliedMs },
     });
-    // The reopen must not depend on the old session closing cleanly.
-    const closing = (old ? this.closeConnection(run, old) : Promise.resolve()).catch(
-      () => undefined,
-    );
+    // The reopen must not depend on the old session closing cleanly, or at all: after a network
+    // drop the SDK's disconnect can hang behind its own connect.
+    const closing = Promise.race([
+      (old ? this.closeConnection(run, old) : Promise.resolve()).catch(() => undefined),
+      new Promise<void>((resolve) => window.setTimeout(resolve, LIVE_POLICY.closeWaitMs)),
+    ]);
     run.wake = window.setTimeout(() => {
       run.wake = null;
       void closing.then(() => {
