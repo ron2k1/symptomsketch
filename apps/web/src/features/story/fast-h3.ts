@@ -81,6 +81,14 @@ export function reactorFailure(err: unknown): string | null {
   return `The FastH3 ${step} step failed (${err.code}). Retry in a moment.`;
 }
 
+/** The session was torn down (Cancel, leaving the page, an earlier failure) before this step. */
+export class SessionClosedError extends Error {
+  constructor() {
+    super("The FastH3 session was closed.");
+    this.name = "SessionClosedError";
+  }
+}
+
 export function numberOf(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
@@ -125,8 +133,22 @@ export class FastH3Session {
     return this.closed;
   }
 
+  /**
+   * Open the session. Refuses once disconnect() ran: on SDK 3.1 a connect() after disconnect()
+   * builds a fresh client, so a teardown that lands while the token/director/photo calls are still
+   * out would otherwise be followed by a live, unwatched, billed session. A disconnect() during the
+   * connect is honored once it resolves.
+   */
   async connect(jwt: string): Promise<void> {
+    if (this.closed) throw new SessionClosedError();
     await this.reactor.connect(jwt);
+    if (!this.closed) return;
+    try {
+      await this.reactor.disconnect();
+    } catch {
+      // already gone
+    }
+    throw new SessionClosedError();
   }
 
   /** Send one command; resolves the correlated reply (3.x) normalized, or null. */
@@ -144,7 +166,8 @@ export class FastH3Session {
     await this.command("set_clip_seconds", { seconds });
   }
 
-  uploadFile(blob: Blob): Promise<FileRef> {
+  async uploadFile(blob: Blob): Promise<FileRef> {
+    if (this.closed) throw new SessionClosedError();
     return this.reactor.uploadFile(blob);
   }
 
