@@ -90,9 +90,10 @@ are in `docs/providers/reactor-x2.md` section 9. Nothing on screen is a stock cl
 - The critic often returns uncertain when the clip starts at rest (it cannot see the "after
   stopping" part), so accepting usually needs a review note.
 - Support demonstration takes (solution mode): the sketch now moves the vacuum about 12% of the
-  frame, and the critic gets the clip's first and last stills, so it sees the move (critic-v1 called
-  the same clip motionless). It can still flag the direction, reading the sliding vacuum as moving
-  sideways, which blocks accept. Record another take, or answer with a text reply.
+  frame, and the critic gets the clip's first and last stills at full size, so it sees the move
+  (critic-v1 called the same clip motionless). X2 still sometimes adds artifacts, such as a second
+  vacuum body appearing behind the moved one, and the critic flags those as needs_revision, which
+  blocks accept. Record another take, or answer with a text reply.
 - A small dark sliver of the side brush can stay on the rug behind the moved vacuum.
 - Generated clips illustrate what the customer describes. They do not diagnose a fault. Demo
   Support is hosted inside SymptomSketch; no manufacturer is contacted.
