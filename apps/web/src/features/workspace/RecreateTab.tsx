@@ -91,11 +91,11 @@ export function RecreateTab() {
       const stage = stageRef.current;
       if (!stage) return;
       stage.scrollIntoView({ block: "center", behavior: "smooth" });
-      // Record next take when it is enabled, otherwise the stage itself (it explains why not).
-      const record = Array.from(stage.querySelectorAll<HTMLButtonElement>("button")).find(
-        (b) => !b.disabled && b.textContent?.includes("Record next take"),
+      // Clip when it is enabled, otherwise the stage itself (it explains why not).
+      const clip = stage.querySelector<HTMLButtonElement>(
+        '[data-stage-action="clip"]:not(:disabled)',
       );
-      (record ?? stage).focus();
+      (clip ?? stage).focus();
     });
   }
 
@@ -103,7 +103,7 @@ export function RecreateTab() {
     const ok = await ws.submitPlan(purpose, text.slice(0, LIMITS.composerMaxChars));
     if (ok) {
       ws.selectTake(null);
-      announce("Description updated. Record next take to try it.");
+      announce("Description updated. Clip the live stage once it shows the change.");
     }
   }
 

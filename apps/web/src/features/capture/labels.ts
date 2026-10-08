@@ -1,4 +1,7 @@
-/** Permanent text burned into recorded pixels (spec 12). Frozen when Record next take starts. */
+/**
+ * Permanent text burned into recorded pixels (spec 12). Fixed per rolling recording: a new plan or
+ * product label starts a new recording, so every clip carries the labels of the plan it is tagged with.
+ */
 export interface RecordingLabels {
   /** PURPOSE_LABELS[purpose]: "AI-generated reenactment" | "AI-generated instructional illustration". */
   purposeLabel: string;

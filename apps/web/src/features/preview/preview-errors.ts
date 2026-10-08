@@ -43,8 +43,6 @@ export const STAGE_ERRORS = {
 
 /** Why a live preview stopped on its own (shown as a one-line notice, not an error). */
 export const STOP_NOTICES = {
-  idle: "Preview stopped after 90 seconds without activity.",
-  max: "Preview stopped at the 5 minute session limit.",
   lease: "The Reactor X2 session ended. Start it again when you are ready.",
   reference: "The product reference changed. Start the preview again to use it.",
 } as const;

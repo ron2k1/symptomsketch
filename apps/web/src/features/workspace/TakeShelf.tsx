@@ -51,8 +51,7 @@ export function TakeShelf({
       </div>
       {takes.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-          No saved takes yet. Use Record next take on the stage; the live preview itself is not
-          saved.
+          No saved takes yet. Use Clip on the live stage; the live preview itself is not saved.
         </p>
       ) : (
         <ul className="flex gap-3 overflow-x-auto pb-2" aria-label="Saved takes">

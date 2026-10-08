@@ -155,7 +155,7 @@ export const UI_STATE_COPY: Record<UiState, { copy: string; actions: string }> =
   planning: { copy: "Understanding the action", actions: "Preserve editable input" },
   connecting: { copy: "Connecting to Reactor X2", actions: "Cancel" },
   waiting_frames: { copy: "Preparing your preview", actions: "Stop preview" },
-  live: { copy: "Live preview", actions: "Refine, Record next take, Stop" },
+  live: { copy: "Live preview", actions: "Refine, Clip, Replay movement, Stop" },
   updating: {
     copy: "Updating the movement",
     actions: "Stop; recording disabled until the current plan is ready",

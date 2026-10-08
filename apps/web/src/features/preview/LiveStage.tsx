@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ERROR_COPY,
-  LIMITS,
   PREVIEW_STATUS_COPY,
   PURPOSE_LABELS,
   takeShelfLabel,
@@ -10,10 +9,10 @@ import {
   type Purpose,
   type Take,
 } from "@symptomsketch/contracts";
-import { formatDuration, formatTakeNumber } from "@/lib/format";
+import { formatTakeNumber } from "@/lib/format";
 import { checkRecordingSupport } from "@/features/capture/recorder";
-import { useTakeCapture, type CapturePhase } from "@/features/capture/useTakeCapture";
-import type { SessionStatus } from "./preview-controller";
+import { useClipCapture } from "@/features/capture/useClipCapture";
+import { LIVE_COPY } from "./live-policy";
 import { StageControls } from "./StageControls";
 import { StageScreen, type StageScreenProps } from "./StageScreen";
 import { useX2Session } from "./useX2Session";
@@ -41,36 +40,40 @@ export interface LiveStageProps {
   onExitTake?(): void;
 }
 
-const UNSUPPORTED = `${ERROR_COPY.RECORDING_UNSUPPORTED} Recording takes needs current desktop Chrome.`;
+const UNSUPPORTED = `${ERROR_COPY.RECORDING_UNSUPPORTED} Clipping needs current desktop Chrome.`;
 const NEEDS_PLAN = "The preview starts from a ready movement plan.";
-const NEEDS_CURRENT_PLAN = "Recording unlocks once the preview shows the current plan.";
-const RECORD_UNAVAILABLE = "Recording is not available for this case right now.";
-
-function combineStatus(session: SessionStatus, capture: CapturePhase): PreviewStatus {
-  if (capture === "armed" || capture === "recording" || capture === "uploading") return capture;
-  if (capture === "failed") return "error";
-  return session;
-}
+const NEEDS_CURRENT_PLAN = "Clipping unlocks once the preview shows the current plan.";
+const RECORD_UNAVAILABLE = "Clipping is not available for this case right now.";
+const WAITING_OUTPUT = "Waiting for fresh Reactor X2 output before clipping.";
+const SAVING_CLIP = "Saving the clip";
 
 /**
- * Owner: web-preview. Live Reactor X2 preview (explicit Start preview only) + armed Record next
- * take (spec 6, 8, 12). Saved takes replace the live player; Compare original overlays the source.
+ * Owner: web-preview. Live Reactor X2 preview (explicit Start preview only) that keeps generating
+ * until stopped, with retroactive "Clip last N s" takes (spec 6, 8, 12). Saved takes replace the
+ * live player while the session keeps running; Compare original overlays the source.
  */
 export function LiveStage(props: LiveStageProps) {
   const { caseId, plan, referenceImageUrl, selectedTake, productLabel } = props;
   const videoRef = useRef<HTMLVideoElement>(null);
   const support = useMemo(() => checkRecordingSupport(), []);
   const { view: session, controller } = useX2Session({ caseId, plan, referenceImageUrl });
-  const capture = useTakeCapture({
+  const takeMode = selectedTake !== null;
+  const capture = useClipCapture({
     caseId,
     controller,
+    session,
+    plan,
+    productLabel,
+    generatedConcept: props.isGeneratedConcept,
     support,
+    enabled: props.canRecord && !takeMode,
     onTakeUploaded: props.onTakeUploaded,
   });
   const cv = capture.view;
   const [started, setStarted] = useState(false);
 
-  const status = combineStatus(session.status, cv.phase);
+  // Clipping never interrupts the session, so the stage reports the save on top of it.
+  const status: PreviewStatus = cv.phase === "uploading" ? "uploading" : session.status;
   const statusCb = useRef(props.onStatusChange);
   useEffect(() => {
     statusCb.current = props.onStatusChange;
@@ -79,34 +82,19 @@ export function LiveStage(props: LiveStageProps) {
     statusCb.current?.(status);
   }, [status]);
 
-  // A selected saved take replaces live playback: end the (billed) live session.
-  const takeId = selectedTake?.id ?? null;
-  const capturing = cv.phase === "armed" || cv.phase === "recording";
-  useEffect(() => {
-    if (takeId && !capturing) void controller.stop("user");
-    // `capturing` is read, not a dependency: only a take selection change stops the preview.
-  }, [takeId, controller]);
-
   const planReady = plan !== null && plan.status === "ready" && plan.reactorPrompt !== null;
-  const takeMode = selectedTake !== null;
+  const planCurrent = planReady && plan.id === session.activePlanId;
   const sessionActive =
-    status === "connecting" ||
-    status === "waiting_frames" ||
-    status === "live" ||
-    status === "updating";
+    session.status === "connecting" ||
+    session.status === "waiting_frames" ||
+    session.status === "live" ||
+    session.status === "updating";
   const canStart =
     planReady &&
     support.canPreview &&
     !takeMode &&
-    (status === "idle" || status === "error") &&
-    !(cv.phase === "failed" && cv.canRetryUpload);
-  const canRecord =
-    status === "live" &&
-    planReady &&
-    plan.id === session.activePlanId &&
-    props.canRecord &&
-    support.supported &&
-    cv.phase === "idle";
+    (session.status === "idle" || session.status === "error");
+  const canReplay = session.status === "live" && planCurrent && !session.reconnecting;
 
   const startHint = !support.canPreview
     ? UNSUPPORTED
@@ -115,71 +103,59 @@ export function LiveStage(props: LiveStageProps) {
       : !support.supported
         ? UNSUPPORTED
         : null;
-  const recordHint = canRecord
-    ? null
-    : !support.supported
-      ? UNSUPPORTED
-      : !planReady || plan.id !== session.activePlanId || status === "updating"
-        ? NEEDS_CURRENT_PLAN
-        : !props.canRecord
-          ? RECORD_UNAVAILABLE
-          : null;
+  const clipHint = !support.supported
+    ? UNSUPPORTED
+    : !props.canRecord
+      ? RECORD_UNAVAILABLE
+      : session.reconnecting || session.status === "connecting"
+        ? null
+        : !planCurrent
+          ? NEEDS_CURRENT_PLAN
+          : cv.readiness?.kind === "stalled"
+            ? WAITING_OUTPUT
+            : null;
 
-  const error = cv.error ?? session.error;
+  const error = session.error;
   const statusText = takeMode
     ? `${formatTakeNumber(selectedTake.number)} · ${takeShelfLabel(selectedTake)}`
-    : status === "recording"
-      ? `Recording ${formatDuration(cv.elapsedSec * 1000)}`
-      : status === "uploading" && cv.savingIncomplete
-        ? "Saving the incomplete take"
-        : status === "error"
-          ? (error?.title ?? PREVIEW_STATUS_COPY.error)
-          : status === "idle" && !started
+    : cv.phase === "uploading"
+      ? cv.savingSeconds !== null
+        ? `${SAVING_CLIP} (${cv.savingSeconds} s)`
+        : SAVING_CLIP
+      : session.status === "error"
+        ? (error?.title ?? PREVIEW_STATUS_COPY.error)
+        : session.reconnecting
+          ? LIVE_COPY.reconnecting
+          : session.status === "idle" && !started
             ? "Preview is off"
-            : PREVIEW_STATUS_COPY[status];
-  const detail =
-    takeMode || status !== "recording"
-      ? status === "error" && !takeMode
+            : PREVIEW_STATUS_COPY[session.status];
+  const detail = takeMode
+    ? null
+    : cv.phase === "failed" && cv.error
+      ? `${cv.error.title}. ${cv.error.detail}`
+      : session.status === "error"
         ? (error?.detail ?? null)
-        : null
-      : cv.waitingForOutput
-        ? "Waiting for the first generated frame"
-        : `Generated output ${formatDuration(cv.outputSec * 1000)} of ${formatDuration(
-            LIMITS.defaultCaptureSeconds * 1000,
-          )}`;
+        : session.reconnecting
+          ? LIVE_COPY.reconnectingDetail
+          : null;
 
-  const showLiveVideo =
-    status === "live" || status === "updating" || (status === "recording" && !cv.waitingForOutput);
+  const showLiveVideo = session.status === "live" || session.status === "updating";
   const overlay: StageScreenProps["overlay"] =
-    status === "error" && error
+    session.status === "error" && error
       ? { kind: "error", title: error.title, detail: error.detail }
-      : status === "connecting" || status === "waiting_frames" || status === "armed"
-        ? { kind: "busy", title: PREVIEW_STATUS_COPY[status] }
-        : status === "recording" && cv.waitingForOutput
-          ? { kind: "busy", title: "Waiting for the first generated frame" }
-          : status === "uploading"
-            ? { kind: "busy", title: statusText }
-            : null;
+      : session.status === "connecting" || session.status === "waiting_frames"
+        ? session.reconnecting
+          ? { kind: "busy", title: LIVE_COPY.reconnecting, detail: LIVE_COPY.reconnectingDetail }
+          : { kind: "busy", title: PREVIEW_STATUS_COPY[session.status] }
+        : null;
+  // The Rec pill shows how much live output a clip would save right now.
+  const recordingSec = !takeMode && cv.readiness?.kind === "ready" ? cv.readiness.seconds : null;
 
   const onStart = () => {
     const video = videoRef.current;
     if (!video || !canStart) return;
     setStarted(true);
-    capture.dismiss();
     void controller.start(video);
-  };
-  const onRecord = () => {
-    if (!canRecord || plan.reactorPrompt === null) return;
-    controller.touch();
-    void capture.record({
-      plan: { ...plan, reactorPrompt: plan.reactorPrompt },
-      labels: {
-        purposeLabel: PURPOSE_LABELS[plan.purpose],
-        caption: plan.caption,
-        productLabel,
-        generatedConcept: props.isGeneratedConcept,
-      },
-    });
   };
 
   return (
@@ -190,6 +166,7 @@ export function LiveStage(props: LiveStageProps) {
       data-purpose={props.purpose}
       data-plan-id={plan?.id ?? ""}
       data-status={status}
+      data-reconnecting={session.reconnecting ? "true" : undefined}
     >
       <StageScreen
         videoRef={videoRef}
@@ -209,33 +186,33 @@ export function LiveStage(props: LiveStageProps) {
             : null
         }
         compareOriginal={props.compareOriginal}
-        recordingSec={status === "recording" ? cv.elapsedSec : null}
-        updating={status === "updating"}
+        recordingSec={recordingSec}
+        updating={session.status === "updating"}
         overlay={overlay}
       />
       <p className="sr-only" aria-live="polite">
         {takeMode
           ? `Showing ${formatTakeNumber(selectedTake.number)}`
-          : PREVIEW_STATUS_COPY[status]}
+          : session.reconnecting
+            ? LIVE_COPY.reconnecting
+            : PREVIEW_STATUS_COPY[status]}
       </p>
       <StageControls
         status={status}
         statusText={statusText}
         detail={detail}
         takeMode={takeMode}
+        sessionActive={sessionActive}
         canStart={canStart}
         startHint={sessionActive ? null : startHint}
-        canRecord={canRecord}
-        recordHint={recordHint}
-        capture={cv}
-        idleMsLeft={session.idleMsLeft}
+        clip={cv}
+        clipHint={clipHint}
+        canReplay={canReplay}
         notice={cv.notice ?? session.notice}
         onStart={onStart}
         onStop={() => void controller.stop("user")}
-        onRecord={onRecord}
-        onStopEarly={() => void capture.stopEarly()}
-        onCancel={capture.cancel}
-        onContinue={() => controller.continuePreview()}
+        onClip={() => void capture.clip()}
+        onReplay={() => controller.replayMovement()}
         onRetryUpload={capture.retryUpload}
         onDismissNotice={() => {
           capture.clearNotice();

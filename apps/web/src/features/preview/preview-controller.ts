@@ -8,15 +8,9 @@ import {
 import { createReactorToken } from "@/lib/api";
 import { newClientRequestId } from "@/lib/ids";
 import { heartbeatLease, loadReference, releaseLease, releaseLeaseKeepalive } from "./lease";
-import {
-  STAGE_ERRORS,
-  STOP_NOTICES,
-  stageErrorFrom,
-  type StageError,
-  type StopNoticeKey,
-} from "./preview-errors";
-import { evaluateSessionClock } from "./session-clock";
-import { X2Preview } from "./x2-preview";
+import { LIVE_COPY, LIVE_POLICY, evaluateLivePolicy, reconnectDelayMs } from "./live-policy";
+import { STAGE_ERRORS, STOP_NOTICES, stageErrorFrom, type StageError } from "./preview-errors";
+import { X2Preview, type FreshFrame } from "./x2-preview";
 
 export type SessionStatus = Extract<
   PreviewStatus,
@@ -28,27 +22,37 @@ export interface SessionView {
   error: StageError | null;
   /** One-line, non-error explanation (why the preview stopped, a declined correction, ...). */
   notice: string | null;
-  /** Set while the visible Continue preview prompt is due (ms until the idle stop). */
-  idleMsLeft: number | null;
   /** Plan revision whose prompt the live output currently reflects. */
   activePlanId: string | null;
+  /** A dropped or rotated X2 connection is being replaced; the preview resumes on its own. */
+  reconnecting: boolean;
+  /**
+   * performance.now() of the first fresh frame showing the active plan in the current run. Null
+   * while connecting, reconnecting, restarting or applying a new plan: clips start after it.
+   */
+  outputSince: number | null;
+  /** The tab is hidden (the preview stops after LIVE_POLICY.hiddenStopMs). */
+  hidden: boolean;
 }
 
+const STOPPED = {
+  activePlanId: null,
+  reconnecting: false,
+  outputSince: null,
+} as const satisfies Partial<SessionView>;
+
 export const INITIAL_SESSION_VIEW: SessionView = {
+  ...STOPPED,
   status: "idle",
   error: null,
   notice: null,
-  idleMsLeft: null,
-  activePlanId: null,
+  hidden: false,
 };
 
-/** What Record next take borrows from the live session. */
+/** What clip capture borrows from the running preview (never its X2 session). */
 export interface ActiveSession {
-  preview: X2Preview;
   video: HTMLVideoElement;
   still: ImageBitmap;
-  referenceBlob: Blob;
-  activePlanId: string;
 }
 
 export interface PreviewProps {
@@ -57,26 +61,59 @@ export interface PreviewProps {
   referenceImageUrl: string;
 }
 
-type StopReason = StopNoticeKey | "user" | "captured" | "case" | "unmount";
+type StopReason = "user" | "case" | "unmount" | "lease" | "reference" | "hidden";
 
-interface LiveSession {
-  seq: number;
+const STOP_NOTICE: Partial<Record<StopReason, string>> = {
+  lease: STOP_NOTICES.lease,
+  reference: STOP_NOTICES.reference,
+  hidden: LIVE_COPY.hiddenStop,
+};
+
+type ReadyPlan = PlanRevision & { reactorPrompt: string };
+
+/** One explicit Start until stop. Survives connection rotations and reconnects. */
+interface Run {
   caseId: string;
   referenceUrl: string;
   video: HTMLVideoElement;
-  preview: X2Preview;
-  leaseId: string;
   still: ImageBitmap;
   referenceBlob: Blob;
-  startedAt: number;
-  lastActivityAt: number;
+  /** Plan whose prompt the output reflects; reapplied on reconnect. */
+  activePlan: ReadyPlan | null;
+  /** Consecutive unplanned drops; reset after LIVE_POLICY.stableAfterMs of output. */
+  drops: number;
+  /** First fresh frame of the current connection. */
+  liveSince: number | null;
+  reconnecting: boolean;
+  /** Bumped per connection attempt so a stale token mint releases its lease and bails. */
+  attempt: number;
+  conn: Connection | null;
+  watchdog: number;
+  wake: number | null;
+}
+
+/** One token + lease + X2 session. */
+interface Connection {
+  preview: X2Preview;
+  leaseId: string;
+  openedAt: number;
   connected: boolean;
   fired: boolean;
   firstFrameSeen: boolean;
-  busy: boolean;
+  /** Prompt X2 last accepted on this connection (Replay movement re-sends it). */
+  prompt: string;
+  pumping: boolean;
   heartbeatFailures: number;
-  timers: number[];
+  heartbeat: number;
   unsubs: Array<() => void>;
+}
+
+interface PendingPrompt {
+  plan: ReadyPlan;
+  prompt: string;
+  action: SelectedAction | null;
+  /** Replay movement: same plan, same prompt; replays the sketch or restarts the run. */
+  replay: boolean;
 }
 
 const CORRECTION_DECLINED =
@@ -84,35 +121,33 @@ const CORRECTION_DECLINED =
 const MODERATION_WARNING = "The provider flagged part of this request. Consider rephrasing it.";
 
 /** The structured action that selects the motion sketch (null when the plan carries none). */
-function actionOf(plan: PlanRevision): SelectedAction | null {
-  const inner = (plan as { plan?: { selectedAction?: SelectedAction } }).plan;
+function actionOf(plan: PlanRevision | null): SelectedAction | null {
+  const inner = (plan as { plan?: { selectedAction?: SelectedAction } } | null)?.plan;
   return inner?.selectedAction ?? null;
 }
 
-function isReadyPlan(plan: PlanRevision | null): plan is PlanRevision & { reactorPrompt: string } {
+function isReadyPlan(plan: PlanRevision | null): plan is ReadyPlan {
   return plan !== null && plan.status === "ready" && typeof plan.reactorPrompt === "string";
 }
 
 /**
- * Imperative owner of one live X2 preview at a time (spec 8): explicit start only, token + lease,
- * serialized prompt updates, heartbeat, idle/max timers, documented cleanup. React-free so the
- * hook stays thin; `onChange` receives a fresh view object on every change.
+ * Imperative owner of the live X2 preview: explicit start only, then generation continues until
+ * Stop, a case or reference change, lease loss, or a long-hidden tab. Connections rotate before the
+ * server's lease cap and reconnect after provider drops, reapplying the current plan. React-free so
+ * the hook stays thin; `onChange` receives a fresh view object on every change.
  */
 export class PreviewController {
   private readonly onChange: (view: SessionView) => void;
   private view: SessionView = INITIAL_SESSION_VIEW;
   private props: PreviewProps | null = null;
-  private session: LiveSession | null = null;
+  private run: Run | null = null;
   private seq = 0;
+  private hiddenSince: number | null = null;
   private reference: { url: string; blob: Blob; still: ImageBitmap } | null = null;
-  private pendingPrompt: {
-    planId: string;
-    prompt: string;
-    action: SelectedAction | null;
-  } | null = null;
+  private pendingPrompt: PendingPrompt | null = null;
   private queuedPlanId: string | null = null;
-  private pumping = false;
-  private frameWaiter: { threshold: number; resolve: () => void } | null = null;
+  private frameWaiter: { accept: (f: FreshFrame) => boolean; resolve: () => void } | null = null;
+  private readonly frameListeners = new Set<(frame: FreshFrame) => void>();
 
   constructor(onChange: (view: SessionView) => void) {
     this.onChange = onChange;
@@ -125,39 +160,36 @@ export class PreviewController {
   setProps(next: PreviewProps): void {
     const prev = this.props;
     this.props = next;
-    const s = this.session;
-    if (!s) return;
-    if (prev && next.caseId !== s.caseId) {
+    const run = this.run;
+    if (!run) return;
+    if (prev && next.caseId !== run.caseId) {
       void this.stop("case");
       return;
     }
-    if (s.busy) return; // plan, labels and source are frozen while a take is captured
-    if (next.referenceImageUrl !== s.referenceUrl) {
+    if (next.referenceImageUrl !== run.referenceUrl) {
       void this.stop("reference");
       return;
     }
     if (isReadyPlan(next.plan) && next.plan.id !== this.queuedPlanId) {
       this.queuedPlanId = next.plan.id;
       this.pendingPrompt = {
-        planId: next.plan.id,
+        plan: next.plan,
         prompt: next.plan.reactorPrompt,
         action: actionOf(next.plan),
+        replay: false,
       };
-      s.lastActivityAt = performance.now();
-      if (s.fired) void this.pump(s);
+      const conn = run.conn;
+      if (conn?.fired) void this.pump(run, conn);
     }
   }
 
   /** Explicit user action only (never on mount). */
   async start(video: HTMLVideoElement): Promise<void> {
     const props = this.props;
-    if (!props || this.session || this.view.status === "connecting") return;
-    const plan = props.plan;
-    if (!isReadyPlan(plan)) return;
+    if (!props || this.run || this.view.status === "connecting") return;
+    if (!isReadyPlan(props.plan)) return;
     const seq = ++this.seq;
-    this.update({ status: "connecting", error: null, notice: null, idleMsLeft: null });
-
-    let token: ReactorTokenResponse;
+    this.update({ ...STOPPED, status: "connecting", error: null, notice: null });
     let ref: { blob: Blob; still: ImageBitmap };
     try {
       ref = await this.referenceFor(props.referenceImageUrl);
@@ -166,116 +198,84 @@ export class PreviewController {
       return;
     }
     if (seq !== this.seq) return;
-    try {
-      token = await createReactorToken(props.caseId, {
-        planRevisionId: plan.id,
-        clientRequestId: newClientRequestId(),
-      });
-    } catch (err) {
-      if (seq === this.seq) this.update({ status: "error", error: stageErrorFrom(err) });
-      return;
-    }
-    if (seq !== this.seq) {
-      releaseLease(props.caseId, token.leaseId);
-      return;
-    }
-
-    const now = performance.now();
-    const s: LiveSession = {
-      seq,
+    const run: Run = {
       caseId: props.caseId,
       referenceUrl: props.referenceImageUrl,
       video,
-      preview: new X2Preview(video),
-      leaseId: token.leaseId,
       still: ref.still,
       referenceBlob: ref.blob,
-      startedAt: now,
-      lastActivityAt: now,
-      connected: false,
-      fired: false,
-      firstFrameSeen: false,
-      busy: false,
-      heartbeatFailures: 0,
-      timers: [],
-      unsubs: [],
+      activePlan: null,
+      drops: 0,
+      liveSince: null,
+      reconnecting: false,
+      attempt: 0,
+      conn: null,
+      watchdog: 0,
+      wake: null,
     };
-    this.session = s;
-    this.queuedPlanId = plan.id;
-    this.pendingPrompt = null;
-    this.wire(s);
-
-    try {
-      await s.preview.connect(token.jwt, ref.still, actionOf(plan), plan.purpose);
-      if (this.session !== s) return;
-      s.connected = true;
-      this.update({ status: "waiting_frames" });
-      await s.preview.prepareRun(ref.blob);
-      if (this.session !== s) return;
-      await s.preview.fire(token.reactorPrompt);
-      if (this.session !== s) return;
-      s.fired = true;
-      this.update({ activePlanId: plan.id });
-      if (this.pendingPrompt) void this.pump(s); // plan changed while connecting
-    } catch (err) {
-      if (this.session !== s) return;
-      await this.fail(stageErrorFrom(err));
-    }
+    run.watchdog = window.setInterval(() => this.checkPolicy(run), 1000);
+    this.run = run;
+    await this.open(run);
   }
 
   /** User Stop preview, and every automatic stop. */
   async stop(reason: StopReason = "user"): Promise<void> {
     this.seq += 1;
-    const notice = reason in STOP_NOTICES ? STOP_NOTICES[reason as StopNoticeKey] : null;
-    const hadSession = this.session !== null || this.view.status === "connecting";
+    const hadRun = this.run !== null || this.view.status === "connecting";
     await this.teardown();
-    if (hadSession || reason === "user") {
-      this.update({ status: "idle", error: null, notice, idleMsLeft: null, activePlanId: null });
+    if (hadRun || reason === "user") {
+      this.update({ ...STOPPED, status: "idle", error: null, notice: STOP_NOTICE[reason] ?? null });
     }
   }
 
-  continuePreview(): void {
-    this.touch();
+  /**
+   * Replays the active plan's movement on the running session (no new token): a motion sketch
+   * replays through the correction path; a static still needs a fresh run.
+   */
+  replayMovement(): void {
+    const run = this.run;
+    const conn = run?.conn;
+    if (!run || !conn?.fired || !run.activePlan || this.pendingPrompt) return;
+    this.pendingPrompt = {
+      plan: run.activePlan,
+      prompt: conn.prompt,
+      action: actionOf(run.activePlan),
+      replay: true,
+    };
+    void this.pump(run, conn);
   }
 
-  /** Explicit activity resets the 90 s idle timer. */
-  touch(): void {
-    if (!this.session) return;
-    this.session.lastActivityAt = performance.now();
-    if (this.view.idleMsLeft !== null) this.update({ idleMsLeft: null });
+  /** Page Visibility: a hidden tab stops the preview after LIVE_POLICY.hiddenStopMs. */
+  setHidden(hidden: boolean): void {
+    if (hidden && this.hiddenSince === null) this.hiddenSince = performance.now();
+    if (!hidden) this.hiddenSince = null;
+    if (this.view.hidden !== hidden) this.update({ hidden });
+    if (!hidden && this.run) this.checkPolicy(this.run); // a held rotation runs now
+  }
+
+  /** Fresh output frames of the current run (clip capture). Returns an unsubscribe. */
+  onFrame(fn: (frame: FreshFrame) => void): () => void {
+    this.frameListeners.add(fn);
+    return () => this.frameListeners.delete(fn);
   }
 
   dismissNotice(): void {
     if (this.view.notice) this.update({ notice: null });
   }
 
-  /** The live session a take can be captured from (generation running, output current). */
+  /** The running preview a clip can be recorded from. */
   getActive(): ActiveSession | null {
-    const s = this.session;
-    if (!s || !s.fired || s.preview.isClosed || this.view.activePlanId === null) return null;
-    return {
-      preview: s.preview,
-      video: s.video,
-      still: s.still,
-      referenceBlob: s.referenceBlob,
-      activePlanId: this.view.activePlanId,
-    };
-  }
-
-  /** Capture in progress: no prompt updates, no idle/max stop, no source change. */
-  setBusy(busy: boolean): void {
-    if (!this.session) return;
-    this.session.busy = busy;
-    this.session.lastActivityAt = performance.now();
-    if (busy) this.pendingPrompt = null;
+    const run = this.run;
+    if (!run?.conn?.fired) return null;
+    return { video: run.video, still: run.still };
   }
 
   /** Best-effort release when the page is going away (pagehide). */
   releaseOnPageHide(): void {
-    const s = this.session;
-    if (!s) return;
-    releaseLeaseKeepalive(s.caseId, s.leaseId);
-    void s.preview.close();
+    const run = this.run;
+    if (!run) return;
+    if (run.conn) releaseLeaseKeepalive(run.caseId, run.conn.leaseId);
+    void this.stop("unmount");
   }
 
   private update(patch: Partial<SessionView>): void {
@@ -290,117 +290,287 @@ export class PreviewController {
     return loaded;
   }
 
-  private wire(s: LiveSession): void {
-    const { preview } = s;
-    s.unsubs.push(
+  /** Token + lease, then connect -> reference -> prompt with the newest ready plan. */
+  private async open(run: Run): Promise<void> {
+    const latest = this.props?.plan ?? null;
+    const plan = isReadyPlan(latest) ? latest : run.activePlan;
+    if (!plan) return;
+    const attempt = ++run.attempt;
+    const current = () => this.run === run && run.attempt === attempt;
+    const openedAt = performance.now();
+    let token: ReactorTokenResponse;
+    try {
+      token = await createReactorToken(run.caseId, {
+        planRevisionId: plan.id,
+        clientRequestId: newClientRequestId(),
+      });
+    } catch (err) {
+      if (current()) await this.openFailed(run, stageErrorFrom(err));
+      return;
+    }
+    if (!current()) {
+      releaseLease(run.caseId, token.leaseId);
+      return;
+    }
+
+    const conn: Connection = {
+      preview: new X2Preview(run.video),
+      leaseId: token.leaseId,
+      openedAt,
+      connected: false,
+      fired: false,
+      firstFrameSeen: false,
+      prompt: token.reactorPrompt,
+      pumping: false,
+      heartbeatFailures: 0,
+      heartbeat: 0,
+      unsubs: [],
+    };
+    run.conn = conn;
+    this.queuedPlanId = plan.id;
+    this.pendingPrompt = null;
+    this.wire(run, conn);
+
+    try {
+      await conn.preview.connect(token.jwt, run.still, actionOf(plan), plan.purpose);
+      if (run.conn !== conn) return;
+      conn.connected = true;
+      this.update({ status: "waiting_frames" });
+      await conn.preview.prepareRun(run.referenceBlob);
+      if (run.conn !== conn) return;
+      await conn.preview.fire(token.reactorPrompt);
+      if (run.conn !== conn) return;
+      conn.fired = true;
+      run.activePlan = plan;
+      this.update({ activePlanId: plan.id });
+      if (this.pendingPrompt) void this.pump(run, conn); // plan changed while connecting
+    } catch (err) {
+      if (run.conn !== conn) return;
+      await this.openFailed(run, stageErrorFrom(err));
+    }
+  }
+
+  /** The first connection of a Start fails visibly; a reconnect retries with backoff first. */
+  private async openFailed(run: Run, error: StageError): Promise<void> {
+    if (run.reconnecting) this.reconnect(run, "dropped", error);
+    else await this.fail(error);
+  }
+
+  private wire(run: Run, conn: Connection): void {
+    const { preview } = conn;
+    const mine = () => run.conn === conn;
+    conn.unsubs.push(
       preview.on("frame", (frame) => {
-        if (this.session !== s) return;
-        if (frame.firstOfRun && !s.firstFrameSeen) {
-          s.firstFrameSeen = true;
-          if (!s.busy && this.view.status === "waiting_frames") this.update({ status: "live" });
-        }
-        const waiter = this.frameWaiter;
-        if (waiter && frame.mediaTime > waiter.threshold) {
-          this.frameWaiter = null;
-          waiter.resolve();
-        }
+        if (mine()) this.onFreshFrame(run, conn, frame);
       }),
       preview.on("status", (status) => {
-        if (this.session === s && s.connected && status === "disconnected") {
-          void this.fail(STAGE_ERRORS.disconnected);
-        }
+        if (mine() && conn.connected && status === "disconnected") this.reconnect(run, "dropped");
       }),
       preview.on("outputEnded", () => {
-        if (this.session === s && s.connected) void this.fail(STAGE_ERRORS.disconnected);
+        if (mine() && conn.connected) this.reconnect(run, "dropped");
       }),
       preview.on("moderation", (action) => {
-        if (this.session !== s) return;
+        if (!mine()) return;
         if (action === "terminate") void this.fail(STAGE_ERRORS.moderated);
         else this.update({ notice: MODERATION_WARNING });
       }),
     );
-
-    const heartbeat = window.setInterval(() => void this.heartbeat(s), LIMITS.previewHeartbeatMs);
-    const watchdog = window.setInterval(() => this.checkClock(s), 1000);
-    s.timers.push(heartbeat, watchdog);
+    conn.heartbeat = window.setInterval(
+      () => void this.heartbeat(run, conn),
+      LIMITS.previewHeartbeatMs,
+    );
   }
 
-  private async heartbeat(s: LiveSession): Promise<void> {
-    const result = await heartbeatLease(s.caseId, s.leaseId);
-    if (this.session !== s) return;
-    s.heartbeatFailures = result === "transient" ? s.heartbeatFailures + 1 : 0;
-    const lost = result === "lost" || s.heartbeatFailures >= 2;
-    // Never cut a capture short for capacity bookkeeping; the capture ends the session itself.
-    if (lost && !s.busy) void this.stop("lease");
-  }
-
-  private checkClock(s: LiveSession): void {
-    if (this.session !== s) return;
-    const verdict = evaluateSessionClock({
-      now: performance.now(),
-      startedAt: s.startedAt,
-      lastActivityAt: s.lastActivityAt,
-      busy: s.busy,
-    });
-    if (verdict.kind === "stop") {
-      void this.stop(verdict.reason);
-    } else if (verdict.kind === "idle_warning") {
-      const msLeft = Math.ceil(verdict.msLeft / 1000) * 1000;
-      if (msLeft !== this.view.idleMsLeft) this.update({ idleMsLeft: msLeft });
-    } else if (this.view.idleMsLeft !== null) {
-      this.update({ idleMsLeft: null });
+  private onFreshFrame(run: Run, conn: Connection, frame: FreshFrame): void {
+    if (frame.firstOfRun && !conn.firstFrameSeen) {
+      conn.firstFrameSeen = true;
+      run.reconnecting = false;
+      run.liveSince = frame.at;
+      this.update(
+        this.view.status === "waiting_frames"
+          ? { status: "live", reconnecting: false }
+          : { reconnecting: false },
+      );
     }
+    const waiter = this.frameWaiter;
+    if (waiter?.accept(frame)) {
+      this.frameWaiter = null;
+      waiter.resolve();
+    }
+    if (frame.runId === 0) return; // not attributable to the current run
+    if (this.view.outputSince === null && this.view.status === "live") {
+      this.update({ outputSince: frame.at });
+    }
+    for (const fn of [...this.frameListeners]) fn(frame);
+  }
+
+  private async heartbeat(run: Run, conn: Connection): Promise<void> {
+    const result = await heartbeatLease(run.caseId, conn.leaseId);
+    if (run.conn !== conn) return;
+    conn.heartbeatFailures = result === "transient" ? conn.heartbeatFailures + 1 : 0;
+    // Lost means another tab took the lease or the server ended it: stop, never fight over it.
+    if (result === "lost" || conn.heartbeatFailures >= 2) void this.stop("lease");
+  }
+
+  private checkPolicy(run: Run): void {
+    if (this.run !== run) return;
+    const now = performance.now();
+    if (
+      run.drops > 0 &&
+      run.liveSince !== null &&
+      now - run.liveSince >= LIVE_POLICY.stableAfterMs
+    ) {
+      run.drops = 0;
+    }
+    const conn = run.conn;
+    const verdict = evaluateLivePolicy({
+      now,
+      connectionOpenedAt: conn?.openedAt ?? null,
+      hiddenSince: this.hiddenSince,
+      reconnecting: run.reconnecting || !conn?.fired,
+    });
+    if (verdict.kind === "stop") void this.stop(verdict.reason);
+    else if (verdict.kind === "rotate") this.reconnect(run, "rotate");
+  }
+
+  /**
+   * Replaces the connection: close it and release its lease now, then mint a fresh token after the
+   * backoff. Rotation (planned) waits 0 ms; repeated unplanned drops give up with `error`.
+   */
+  private reconnect(
+    run: Run,
+    cause: "rotate" | "dropped",
+    error: StageError = STAGE_ERRORS.disconnected,
+  ): void {
+    if (this.run !== run) return;
+    if (cause === "dropped") run.drops += 1;
+    const delay = reconnectDelayMs(cause === "rotate" ? 0 : run.drops);
+    if (delay === null) {
+      void this.fail(error);
+      return;
+    }
+    run.reconnecting = true;
+    run.liveSince = null;
+    run.attempt += 1;
+    this.pendingPrompt = null;
+    this.queuedPlanId = null;
+    this.releaseWaiter();
+    const old = run.conn;
+    run.conn = null;
+    if (run.wake !== null) window.clearTimeout(run.wake);
+    this.update({
+      status: "connecting",
+      error: null,
+      reconnecting: true,
+      outputSince: null,
+    });
+    // The reopen must not depend on the old session closing cleanly.
+    const closing = (old ? this.closeConnection(run, old) : Promise.resolve()).catch(
+      () => undefined,
+    );
+    run.wake = window.setTimeout(() => {
+      run.wake = null;
+      void closing.then(() => {
+        if (this.run === run && run.conn === null) void this.open(run);
+      });
+    }, delay);
+  }
+
+  private async closeConnection(run: Run, conn: Connection): Promise<void> {
+    window.clearInterval(conn.heartbeat);
+    for (const off of conn.unsubs.splice(0)) off();
+    await conn.preview.close();
+    releaseLease(run.caseId, conn.leaseId);
   }
 
   /** Serialized prompt updates: one in flight, newest wins, live again only after a fresh frame. */
-  private async pump(s: LiveSession): Promise<void> {
-    if (this.pumping) return;
-    this.pumping = true;
+  private async pump(run: Run, conn: Connection): Promise<void> {
+    if (conn.pumping) return;
+    conn.pumping = true;
+    const mine = () => this.run === run && run.conn === conn;
     try {
-      while (this.pendingPrompt && this.session === s && !s.busy) {
+      while (this.pendingPrompt && mine()) {
         const next = this.pendingPrompt;
         this.pendingPrompt = null;
         this.update({ status: "updating" });
-        const ok = await s.preview.correct(next.prompt, next.action);
-        if (this.session !== s || s.busy) return;
+        if (next.replay && conn.preview.motionProgram === null) {
+          if (!(await this.restartRun(run, conn, next))) return;
+          continue;
+        }
+        const ok = await conn.preview.correct(next.prompt, next.action);
+        if (!mine()) return;
         if (!ok) {
           this.update({ notice: CORRECTION_DECLINED });
           continue;
         }
-        this.update({ activePlanId: next.planId });
+        conn.prompt = next.prompt;
+        if (!next.replay) {
+          // Output before this point shows the previous plan: clips restart from the next frame.
+          run.activePlan = next.plan;
+          this.update({ activePlanId: next.plan.id, outputSince: null });
+        }
         if (this.pendingPrompt) continue; // a newer revision is already waiting
-        const threshold = s.preview.lastMediaTime;
-        await new Promise<void>((resolve) => {
-          this.frameWaiter = { threshold, resolve };
-        });
+        const threshold = conn.preview.lastMediaTime;
+        await this.waitFrame((f) => f.mediaTime > threshold);
       }
     } finally {
-      this.pumping = false;
-      if (this.session === s && !s.busy && this.view.status === "updating") {
-        this.update({ status: s.firstFrameSeen ? "live" : "waiting_frames" });
+      conn.pumping = false;
+      if (mine() && this.view.status === "updating") {
+        this.update({ status: conn.firstFrameSeen ? "live" : "waiting_frames" });
       }
     }
+  }
+
+  /** Replay on a static still: a fresh run on the same connection. False when the pump must end. */
+  private async restartRun(run: Run, conn: Connection, next: PendingPrompt): Promise<boolean> {
+    this.update({ outputSince: null });
+    let runId: number;
+    try {
+      runId = await conn.preview.restartRun(run.referenceBlob, next.prompt);
+    } catch {
+      // reset() already stopped generation: recover with a fresh connection.
+      if (run.conn === conn) this.reconnect(run, "dropped");
+      return false;
+    }
+    if (run.conn !== conn) return false;
+    conn.prompt = next.prompt;
+    if (!this.pendingPrompt) await this.waitFrame((f) => f.runId === runId);
+    return true;
+  }
+
+  private waitFrame(accept: (f: FreshFrame) => boolean): Promise<void> {
+    this.releaseWaiter();
+    return new Promise<void>((resolve) => {
+      this.frameWaiter = { accept, resolve };
+    });
+  }
+
+  private releaseWaiter(): void {
+    const waiter = this.frameWaiter;
+    this.frameWaiter = null;
+    waiter?.resolve();
   }
 
   private async fail(error: StageError): Promise<void> {
     this.seq += 1;
     await this.teardown();
-    this.update({ status: "error", error, idleMsLeft: null, activePlanId: null });
+    this.update({ ...STOPPED, status: "error", error });
   }
 
   /** Documented cleanup order, then lease release. Safe to call repeatedly. */
   private async teardown(): Promise<void> {
-    const s = this.session;
-    this.session = null;
+    const run = this.run;
+    this.run = null;
     this.pendingPrompt = null;
     this.queuedPlanId = null;
-    const waiter = this.frameWaiter;
-    this.frameWaiter = null;
-    waiter?.resolve();
-    if (!s) return;
-    for (const t of s.timers) window.clearInterval(t);
-    for (const off of s.unsubs) off();
-    await s.preview.close();
-    releaseLease(s.caseId, s.leaseId);
+    this.releaseWaiter();
+    if (!run) return;
+    window.clearInterval(run.watchdog);
+    if (run.wake !== null) window.clearTimeout(run.wake);
+    run.wake = null;
+    run.attempt += 1;
+    const conn = run.conn;
+    run.conn = null;
+    if (conn) await this.closeConnection(run, conn);
   }
 }

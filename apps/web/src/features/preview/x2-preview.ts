@@ -243,6 +243,17 @@ export class X2Preview {
   }
 
   /**
+   * Replays the movement from the start pose on the same connection (no new token): stop the run,
+   * re-apply the reference, fire the prompt again. Returns the new run id.
+   */
+  async restartRun(reference: Blob, prompt: string): Promise<number> {
+    await this.reset();
+    if (this.closed) throw new PreviewFailure("ABORTED", "prompt");
+    await this.prepareRun(reference);
+    return this.fire(prompt);
+  }
+
+  /**
    * Mid-run correction; applies from the next block, no restart. Callers serialize these.
    * With a new `action`, the motion sketch replays from the still pose so the change is visible.
    */

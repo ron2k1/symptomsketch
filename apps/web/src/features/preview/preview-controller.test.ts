@@ -9,11 +9,13 @@ const h = vi.hoisted(() => {
     lastMediaTime = -1;
     isClosed = false;
     currentRunId = 0;
+    motionProgram: unknown = null;
     private handlers = new Map<string, Set<Fn>>();
     connect = vi.fn(async () => undefined);
     prepareRun = vi.fn(async () => undefined);
     fire = vi.fn(async () => ++this.currentRunId);
-    correct = vi.fn(async (_prompt: string) => true);
+    restartRun = vi.fn(async (_reference: Blob, _prompt: string) => ++this.currentRunId);
+    correct = vi.fn(async (_prompt: string, _action?: unknown) => true);
     close = vi.fn(async () => {
       this.isClosed = true;
     });
@@ -31,7 +33,12 @@ const h = vi.hoisted(() => {
     }
     frame(mediaTime: number, firstOfRun = false) {
       this.lastMediaTime = mediaTime;
-      this.emit("frame", { runId: this.currentRunId, firstOfRun, mediaTime, at: 0 });
+      this.emit("frame", {
+        runId: this.currentRunId,
+        firstOfRun,
+        mediaTime,
+        at: performance.now(),
+      });
     }
   }
   return {
@@ -64,6 +71,7 @@ vi.mock("./lease", () => ({
 
 const { PreviewController } = await import("./preview-controller");
 const { STAGE_ERRORS, STOP_NOTICES } = await import("./preview-errors");
+const { LIVE_COPY } = await import("./live-policy");
 const { ApiClientError } = await import("@/lib/api");
 
 function plan(id: string, prompt: string): PlanRevision {
@@ -87,6 +95,7 @@ const TOKEN: ReactorTokenResponse = {
 };
 
 const video = {} as HTMLVideoElement;
+const MIN = 60_000;
 
 async function startLive() {
   const views: Array<{ status: string }> = [];
@@ -98,7 +107,7 @@ async function startLive() {
   return { c, preview, views };
 }
 
-describe("PreviewController (spec 8 live preview)", () => {
+describe("PreviewController (infinite live preview)", () => {
   beforeEach(() => {
     h.instances.length = 0;
     vi.clearAllMocks();
@@ -133,10 +142,15 @@ describe("PreviewController (spec 8 live preview)", () => {
     );
     expect(preview.prepareRun).toHaveBeenCalledTimes(1);
     expect(preview.fire).toHaveBeenCalledWith("server compiled prompt one");
-    expect(c.current).toMatchObject({ status: "waiting_frames", activePlanId: "plan_1" });
+    expect(c.current).toMatchObject({
+      status: "waiting_frames",
+      activePlanId: "plan_1",
+      outputSince: null,
+    });
 
     preview.frame(0.04, true);
     expect(c.current.status).toBe("live");
+    expect(c.current.outputSince).toBe(performance.now());
   });
 
   it("hands plan.selectedAction + purpose to connect and the action to every correction", async () => {
@@ -216,12 +230,35 @@ describe("PreviewController (spec 8 live preview)", () => {
 
   it("a declined update keeps the old plan active and says so", async () => {
     const { c, preview } = await startLive();
+    const since = c.current.outputSince;
     preview.correct.mockResolvedValueOnce(false);
     c.setProps({ caseId: "case_1", plan: plan("plan_2", "prompt two"), referenceImageUrl: "/ref" });
     await vi.advanceTimersByTimeAsync(0);
     expect(c.current.status).toBe("live");
     expect(c.current.activePlanId).toBe("plan_1");
+    expect(c.current.outputSince).toBe(since);
     expect(c.current.notice).toMatch(/did not accept/);
+  });
+
+  it("marks when current-plan output began and relays fresh frames to clip capture", async () => {
+    const { c, preview } = await startLive();
+    const seen: number[] = [];
+    const off = c.onFrame((f) => seen.push(f.mediaTime));
+    expect(c.current.outputSince).not.toBeNull();
+
+    c.setProps({ caseId: "case_1", plan: plan("plan_2", "prompt two"), referenceImageUrl: "/ref" });
+    await vi.advanceTimersByTimeAsync(0);
+    // The applied correction starts a new clip epoch: older footage shows the previous plan.
+    expect(c.current).toMatchObject({ activePlanId: "plan_2", outputSince: null });
+    await vi.advanceTimersByTimeAsync(500);
+    preview.frame(2);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(c.current.status).toBe("live");
+    preview.frame(3);
+    expect(c.current.outputSince).toBe(performance.now());
+    off();
+    preview.frame(4);
+    expect(seen).toEqual([2, 3]);
   });
 
   it("heartbeats every 10 s and stops when the lease is lost", async () => {
@@ -235,38 +272,150 @@ describe("PreviewController (spec 8 live preview)", () => {
     expect(c.current).toMatchObject({ status: "idle", notice: STOP_NOTICES.lease });
   });
 
-  it("shows Continue preview before the 90 s idle stop; continuing resets it", async () => {
+  it("never stops a visible preview for inactivity and rotates to a fresh token before the lease cap", async () => {
     const { c, preview } = await startLive();
-    await vi.advanceTimersByTimeAsync(76_000);
-    expect(c.current.idleMsLeft).not.toBeNull();
-    c.continuePreview();
-    expect(c.current.idleMsLeft).toBeNull();
-    await vi.advanceTimersByTimeAsync(80_000);
+    await vi.advanceTimersByTimeAsync(4 * MIN);
     expect(preview.close).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(11_000);
-    expect(preview.close).toHaveBeenCalled();
-    expect(c.current).toMatchObject({ status: "idle", notice: STOP_NOTICES.idle });
-  });
+    expect(c.current.status).toBe("live");
 
-  it("never auto-stops or changes the prompt while a take is being captured", async () => {
-    const { c, preview } = await startLive();
-    c.setBusy(true);
-    c.setProps({ caseId: "case_1", plan: plan("plan_2", "prompt two"), referenceImageUrl: "/ref" });
-    await vi.advanceTimersByTimeAsync(400_000);
-    expect(preview.correct).not.toHaveBeenCalled();
-    expect(preview.close).not.toHaveBeenCalled();
-    await c.stop("captured");
+    h.createReactorToken.mockResolvedValueOnce({ ...TOKEN, leaseId: "lease_2" });
+    await vi.advanceTimersByTimeAsync(41_000); // past 4:40
     expect(preview.close).toHaveBeenCalledTimes(1);
-    expect(c.current).toMatchObject({ status: "idle", notice: null });
+    expect(h.releaseLease).toHaveBeenCalledWith("case_1", "lease_1");
+    expect(h.createReactorToken).toHaveBeenCalledTimes(2);
+    const next = h.instances.at(-1)!;
+    expect(next).not.toBe(preview);
+    expect(next.fire).toHaveBeenCalledWith("server compiled prompt one");
+    expect(c.current).toMatchObject({
+      status: "waiting_frames",
+      reconnecting: true,
+      activePlanId: "plan_1",
+      outputSince: null,
+    });
+    next.frame(1, true);
+    expect(c.current).toMatchObject({ status: "live", reconnecting: false });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(h.heartbeatLease).toHaveBeenLastCalledWith("case_1", "lease_2");
+    // And again 4:40 into the new connection: generation never ends on its own.
+    await vi.advanceTimersByTimeAsync(4 * MIN + 31_000);
+    expect(h.createReactorToken).toHaveBeenCalledTimes(3);
   });
 
-  it("an unexpected disconnect tears down and surfaces an honest error", async () => {
+  it("reconnects automatically after a provider drop and reapplies the current plan", async () => {
     const { c, preview } = await startLive();
+    c.setProps({ caseId: "case_1", plan: plan("plan_2", "prompt two"), referenceImageUrl: "/ref" });
+    await vi.advanceTimersByTimeAsync(0);
+    preview.frame(2);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(c.current.activePlanId).toBe("plan_2");
+
+    h.createReactorToken.mockResolvedValueOnce({
+      ...TOKEN,
+      leaseId: "lease_2",
+      reactorPrompt: "server compiled prompt two",
+    });
     preview.emit("status", "disconnected");
     await vi.advanceTimersByTimeAsync(0);
+    expect(c.current).toMatchObject({ status: "connecting", reconnecting: true, error: null });
     expect(preview.close).toHaveBeenCalled();
     expect(h.releaseLease).toHaveBeenCalledWith("case_1", "lease_1");
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(h.createReactorToken).toHaveBeenLastCalledWith(
+      "case_1",
+      expect.objectContaining({ planRevisionId: "plan_2" }),
+    );
+    const next = h.instances.at(-1)!;
+    expect(next.fire).toHaveBeenCalledWith("server compiled prompt two");
+    next.frame(1, true);
+    expect(c.current).toMatchObject({
+      status: "live",
+      reconnecting: false,
+      activePlanId: "plan_2",
+    });
+  });
+
+  it("gives up with an honest error after repeated drops without stable output", async () => {
+    const { c } = await startLive();
+    for (let i = 0; i < 3; i += 1) {
+      h.instances.at(-1)!.emit("outputEnded", null);
+      await vi.advanceTimersByTimeAsync(9_000); // backoff 1 s, 3 s, 8 s
+      h.instances.at(-1)!.frame(1, true);
+    }
+    expect(h.instances).toHaveLength(4);
+    const last = h.instances.at(-1)!;
+    last.emit("status", "disconnected");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(last.close).toHaveBeenCalled();
     expect(c.current).toMatchObject({ status: "error", error: STAGE_ERRORS.disconnected });
+  });
+
+  it("forgets earlier drops once output has been stable for 30 s", async () => {
+    await startLive();
+    for (let i = 0; i < 3; i += 1) {
+      h.instances.at(-1)!.emit("outputEnded", null);
+      await vi.advanceTimersByTimeAsync(9_000);
+      h.instances.at(-1)!.frame(1, true);
+    }
+    await vi.advanceTimersByTimeAsync(31_000);
+    h.instances.at(-1)!.emit("outputEnded", null);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(h.instances).toHaveLength(5);
+  });
+
+  it("stops after 2 minutes in a hidden tab; returning to the tab resets that clock", async () => {
+    const { c, preview } = await startLive();
+    c.setHidden(true);
+    await vi.advanceTimersByTimeAsync(MIN);
+    c.setHidden(false);
+    c.setHidden(true);
+    await vi.advanceTimersByTimeAsync(2 * MIN - 2_000);
+    expect(preview.close).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(preview.close).toHaveBeenCalled();
+    expect(c.current).toMatchObject({ status: "idle", notice: LIVE_COPY.hiddenStop });
+    // No reconnect afterwards: a hidden-tab stop needs an explicit Start.
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(h.createReactorToken).toHaveBeenCalledTimes(1);
+  });
+
+  it("Replay movement replays the sketch through the correction path on the same session", async () => {
+    const { c, preview } = await startLive();
+    preview.motionProgram = { steps: [] }; // a motion sketch drives this plan
+    const since = c.current.outputSince;
+    c.replayMovement();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(preview.correct).toHaveBeenCalledWith("server compiled prompt one", null);
+    expect(c.current.status).toBe("updating");
+    preview.frame(2);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(c.current).toMatchObject({ status: "live", activePlanId: "plan_1", outputSince: since });
+    expect(h.createReactorToken).toHaveBeenCalledTimes(1);
+    expect(preview.close).not.toHaveBeenCalled();
+  });
+
+  it("Replay movement on a static still restarts the run on the same connection", async () => {
+    const { c, preview } = await startLive();
+    c.replayMovement();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(preview.restartRun).toHaveBeenCalledWith(expect.any(Blob), "server compiled prompt one");
+    expect(c.current).toMatchObject({ status: "updating", outputSince: null });
+    preview.frame(2, true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(c.current.status).toBe("live");
+    preview.frame(3);
+    expect(c.current.outputSince).toBe(performance.now());
+    expect(h.createReactorToken).toHaveBeenCalledTimes(1);
+    expect(preview.close).not.toHaveBeenCalled();
+  });
+
+  it("a moderation terminate ends the preview instead of reconnecting", async () => {
+    const { c, preview } = await startLive();
+    preview.emit("moderation", "terminate");
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(preview.close).toHaveBeenCalled();
+    expect(h.createReactorToken).toHaveBeenCalledTimes(1);
+    expect(c.current).toMatchObject({ status: "error", error: STAGE_ERRORS.moderated });
   });
 
   it("token errors show the server copy and create no X2 session", async () => {

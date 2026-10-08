@@ -23,7 +23,7 @@ export function pickRecordingMimeType(isSupported: (type: string) => boolean): s
   return null;
 }
 
-/** Browser features the armed recording needs (spec 6: check before spending credits). */
+/** Browser features clip recording needs (spec 6: check before spending credits). */
 export interface SupportProbe {
   isTypeSupported: ((type: string) => boolean) | null;
   canvasCaptureStream: boolean;
@@ -31,7 +31,7 @@ export interface SupportProbe {
 }
 
 export interface RecordingSupport {
-  /** Record next take can run. */
+  /** Clips of the live preview can be recorded. */
   supported: boolean;
   /** Fresh-frame detection works, so the live preview can report honest states. */
   canPreview: boolean;
@@ -80,10 +80,19 @@ export interface CanvasRecorder {
 /** MediaRecorder on recordingCanvas.captureStream(24). */
 export function startCanvasRecorder(canvas: HTMLCanvasElement, mimeType: string): CanvasRecorder {
   const stream = canvas.captureStream(STAGE_FPS);
-  const recorder = new MediaRecorder(stream, {
-    mimeType,
-    videoBitsPerSecond: RECORDING_BITS_PER_SECOND,
-  });
+  const stopTracks = () => {
+    for (const track of stream.getTracks()) track.stop();
+  };
+  let recorder: MediaRecorder;
+  try {
+    recorder = new MediaRecorder(stream, {
+      mimeType,
+      videoBitsPerSecond: RECORDING_BITS_PER_SECOND,
+    });
+  } catch (err) {
+    stopTracks(); // clips restart recorders every few seconds: never leak a capture stream
+    throw err;
+  }
   const chunks: Blob[] = [];
   recorder.addEventListener("dataavailable", (e) => {
     if (e.data.size > 0) chunks.push(e.data);
@@ -94,11 +103,13 @@ export function startCanvasRecorder(canvas: HTMLCanvasElement, mimeType: string)
       once: true,
     });
   });
-  recorder.start(500);
+  try {
+    recorder.start(500);
+  } catch (err) {
+    stopTracks();
+    throw err;
+  }
 
-  const stopTracks = () => {
-    for (const track of stream.getTracks()) track.stop();
-  };
   const actualType = () => recorder.mimeType || mimeType;
 
   return {
