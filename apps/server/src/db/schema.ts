@@ -320,24 +320,57 @@ CREATE INDEX idx_support_call_transcripts_ticket ON support_call_transcripts(tic
   /* 4: which portrait (composite | base) the saved Reactor avatar was built from */ `
 ALTER TABLE ticket_support_calls ADD COLUMN avatar_portrait TEXT;
 `,
+  /* 5: a sent FastH3 story can open a ticket on its own, so tickets.take_id becomes nullable.
+     SQLite cannot drop NOT NULL in place: rebuild the table (runMigrations turns foreign keys off
+     around migrations so the DROP does not cascade into attachments, replies or calls). */ `
+CREATE TABLE tickets_v5 (
+  id TEXT PRIMARY KEY,
+  case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+  owner_session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  take_id TEXT REFERENCES takes(id),
+  queue TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'submitted' CHECK (status IN ('submitted','replied','revoked')),
+  snapshot_json TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (owner_session_id, idempotency_key)
+);
+INSERT INTO tickets_v5 (id, case_id, owner_session_id, take_id, queue, status, snapshot_json,
+  idempotency_key, created_at, updated_at)
+  SELECT id, case_id, owner_session_id, take_id, queue, status, snapshot_json, idempotency_key,
+    created_at, updated_at FROM tickets ORDER BY rowid;
+DROP TABLE tickets;
+ALTER TABLE tickets_v5 RENAME TO tickets;
+CREATE INDEX idx_tickets_status ON tickets(status, created_at);
+`,
 ];
 
 /** Apply pending migrations inside one transaction each. Returns the resulting schema version. */
 export function runMigrations(db: DatabaseSync): number {
   const row = db.prepare("PRAGMA user_version").get() as { user_version: number } | undefined;
   let version = row?.user_version ?? 0;
-  while (version < MIGRATIONS.length) {
-    const sql = MIGRATIONS[version]!;
-    db.exec("BEGIN IMMEDIATE");
-    try {
-      db.exec(sql);
-      db.exec(`PRAGMA user_version = ${version + 1}`);
-      db.exec("COMMIT");
-    } catch (err) {
-      db.exec("ROLLBACK");
-      throw err;
+  if (version >= MIGRATIONS.length) return version;
+  // Table rebuilds (migration 5) must not fire ON DELETE actions; the pragma is a no-op inside a
+  // transaction, so it is switched off around the loop and restored after.
+  const fk = db.prepare("PRAGMA foreign_keys").get() as { foreign_keys: number } | undefined;
+  db.exec("PRAGMA foreign_keys = OFF");
+  try {
+    while (version < MIGRATIONS.length) {
+      const sql = MIGRATIONS[version]!;
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        db.exec(sql);
+        db.exec(`PRAGMA user_version = ${version + 1}`);
+        db.exec("COMMIT");
+      } catch (err) {
+        db.exec("ROLLBACK");
+        throw err;
+      }
+      version += 1;
     }
-    version += 1;
+  } finally {
+    if (fk?.foreign_keys) db.exec("PRAGMA foreign_keys = ON");
   }
   return version;
 }

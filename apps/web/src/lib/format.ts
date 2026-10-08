@@ -40,6 +40,8 @@ export function formatTimestamp(iso: string | null | undefined): string {
 }
 
 /** "Take 03" */
-export function formatTakeNumber(n: number): string {
+/** Null: a ticket a sent FastH3 story opened, with no X2 take. */
+export function formatTakeNumber(n: number | null): string {
+  if (n === null) return "Customer story (no X2 take)";
   return `Take ${String(n).padStart(2, "0")}`;
 }

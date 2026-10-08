@@ -52,9 +52,10 @@ export const TicketSnapshot = z.object({
   originalAccount: z.string(),
   actionsTried: z.string(),
   unresolved: z.array(z.string()),
-  takeId: Id,
-  takeNumber: z.number().int().positive(),
-  finalSha256: Sha256,
+  /** The accepted X2 take the ticket was sent with; null on a ticket a sent story opened. */
+  takeId: Id.nullable(),
+  takeNumber: z.number().int().positive().nullable(),
+  finalSha256: Sha256.nullable(),
   caption: z.string(),
   durationMs: z.number().nonnegative().nullable(),
   assessmentStatus: AssessmentUiStatus,
@@ -64,6 +65,8 @@ export const TicketSnapshot = z.object({
   /** The customer's edited message as sent. */
   message: z.string(),
   submittedAt: Timestamp,
+  /** The MiniMax FastH3 story that opened this ticket (no take). Optional: additive field. */
+  storyId: Id.nullable().optional(),
 });
 export type TicketSnapshot = z.infer<typeof TicketSnapshot>;
 
@@ -100,8 +103,9 @@ export const TicketSummary = z.object({
   id: Id,
   status: TicketStatus,
   queue: z.string(),
-  takeId: Id,
-  takeNumber: z.number().int().positive(),
+  /** Null when a sent story opened the ticket without an X2 take. */
+  takeId: Id.nullable(),
+  takeNumber: z.number().int().positive().nullable(),
   replyCount: z.number().int().nonnegative(),
   lastReplyAt: Timestamp.nullable(),
   createdAt: Timestamp,
