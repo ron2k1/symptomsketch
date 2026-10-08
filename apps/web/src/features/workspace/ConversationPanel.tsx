@@ -7,12 +7,13 @@ import type {
   PlanRevision,
   Purpose,
 } from "@symptomsketch/contracts";
+import { errorMessage, patchCase } from "@/lib/api";
 import { formatTimestamp } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Composer } from "./Composer";
 import { CurrentDescription, type CurrentDescriptionHandle } from "./CurrentDescription";
 import { HighlightLegend, HighlightedText } from "./HighlightedText";
-import { currentPlan, messagesFor } from "./state";
+import { currentPlan, isAccountLocked, messagesFor } from "./state";
 import { useWorkspace } from "./WorkspaceProvider";
 
 const KIND_LABELS: Record<MessageKind, string> = {
@@ -126,8 +127,10 @@ export function ConversationPanel({
     plan.productRevisionId !== caseData.productRevisionId;
   const draft = state.composer[purpose];
 
+  // No plan yet: the box takes the first description, so a visitor can start right here.
+  const canStartHere = !plan && purpose === "problem" && caseData.product !== null;
   let disabledReason: string | null = null;
-  if (!plan) disabledReason = "Start from the Issue tab to create the first plan.";
+  if (!plan && !canStartHere) disabledReason = "Start from the Issue tab to create the first plan.";
   else if (captureBusy) disabledReason = "Corrections are paused until the clip is saved.";
   else if (state.planning) disabledReason = "Updating the movement.";
 
@@ -136,9 +139,28 @@ export function ConversationPanel({
     composerRef.current?.focus();
   }
 
+  async function startFromComposer(text: string) {
+    if (!caseData) return;
+    if (!caseData.originalAccount.trim() && !isAccountLocked(caseData)) {
+      try {
+        const res = await patchCase(caseData.id, { originalAccount: text });
+        dispatch({ type: "case_loaded", caseData: res.case });
+        dispatch({ type: "composer_clear", purpose, sentText: text });
+      } catch (err) {
+        dispatch({ type: "plan_error", message: errorMessage(err) });
+        return;
+      }
+    }
+    void ws.submitPlan(purpose, null);
+  }
+
   function submitComposer() {
     const text = draft.text.trim();
     if (!text) return;
+    if (!plan) {
+      void startFromComposer(text);
+      return;
+    }
     void ws.submitPlan(purpose, text, {
       fromComposer: true,
       isClarificationAnswer: question !== null,
@@ -237,7 +259,10 @@ export function ConversationPanel({
         value={draft.text}
         onChange={(text) => dispatch({ type: "composer_text", purpose, text })}
         onSubmit={submitComposer}
-        disabled={!plan || captureBusy}
+        disabled={(!plan && !canStartHere) || captureBusy}
+        label={canStartHere ? "Describe what happened" : undefined}
+        placeholder={canStartHere ? "For example: it stops, then jerks backward." : undefined}
+        submitLabel={canStartHere ? "Plan the movement" : undefined}
         busy={state.planning !== null}
         answering={question !== null}
         disabledReason={disabledReason}

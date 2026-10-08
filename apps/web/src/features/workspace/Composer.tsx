@@ -14,6 +14,10 @@ interface ComposerProps {
   /** A clarification question is open: the next message answers it. */
   answering: boolean;
   disabledReason: string | null;
+  /** Overrides for the first description, when no plan exists yet. */
+  label?: string;
+  placeholder?: string;
+  submitLabel?: string;
   ref?: Ref<HTMLTextAreaElement>;
 }
 
@@ -26,6 +30,9 @@ export function Composer({
   busy,
   answering,
   disabledReason,
+  label,
+  placeholder,
+  submitLabel,
   ref,
 }: ComposerProps) {
   const canSubmit = !disabled && !busy && value.trim().length > 0;
@@ -47,7 +54,7 @@ export function Composer({
     >
       <div className="flex items-end justify-between gap-2">
         <Label htmlFor="composer">
-          {answering ? "Answer the question" : "Refine the movement"}
+          {label ?? (answering ? "Answer the question" : "Refine the movement")}
         </Label>
         <span className="font-mono text-[12px] text-muted-foreground" aria-live="off">
           {value.length}/{LIMITS.composerMaxChars}
@@ -62,7 +69,10 @@ export function Composer({
         disabled={disabled}
         aria-describedby="composer-hint"
         placeholder={
-          answering ? "Type your answer" : "For example: the backward jerk is smaller and quicker."
+          placeholder ??
+          (answering
+            ? "Type your answer"
+            : "For example: the backward jerk is smaller and quicker.")
         }
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
@@ -72,7 +82,7 @@ export function Composer({
       </p>
       <Button type="submit" className="min-h-11 w-full" disabled={!canSubmit}>
         {busy ? <LoaderCircle className="animate-spin" aria-hidden /> : <Send aria-hidden />}
-        {busy ? "Updating the movement" : "Update preview"}
+        {busy ? "Updating the movement" : (submitLabel ?? "Update preview")}
       </Button>
     </form>
   );
