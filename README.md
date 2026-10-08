@@ -89,6 +89,10 @@ are in `docs/providers/reactor-x2.md` section 9. Nothing on screen is a stock cl
   and often moves as a creep followed by a step.
 - The critic often returns uncertain when the clip starts at rest (it cannot see the "after
   stopping" part), so accepting usually needs a review note.
+- Support demonstration takes (solution mode) have scored needs_revision in every live run so far.
+  The plan and prompt now pick the step where the vacuum drives forward, but X2 moves it only a few
+  percent of the frame and the critic reads "drives forward" as more travel than that. Since
+  needs_revision blocks accept, support answers with a text reply in the demo.
 - A small dark sliver of the side brush can stay on the rug behind the moved vacuum.
 - Generated clips illustrate what the customer describes. They do not diagnose a fault. Demo
   Support is hosted inside SymptomSketch; no manufacturer is contacted.
