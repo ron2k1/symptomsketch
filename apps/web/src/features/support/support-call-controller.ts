@@ -387,7 +387,9 @@ export class SupportCallController {
     for (const t of this.out?.getTracks() ?? []) t.stop();
     this.out = null;
     this.model = null;
-    this.set({ hasVideo: false, media: null });
+    // No still stays where live Sam was: the portrait goes with the call.
+    if (this.view.portraitUrl) URL.revokeObjectURL(this.view.portraitUrl);
+    this.set({ hasVideo: false, media: null, portraitUrl: null });
   }
 
   private ensureOpen(): void {

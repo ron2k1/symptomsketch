@@ -167,6 +167,25 @@ describe("CallDock", () => {
     expect(document.querySelector("[data-call-dock]")).toBeNull();
   });
 
+  it("shows the ticket portrait only while preparing, labelled, and never after a failure", async () => {
+    renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Talk to support now/ }));
+    await screen.findByRole("button", { name: /Turn mic on/ });
+    act(() => fake.push?.({ phase: "preparing", portraitUrl: "blob:ticket-portrait" }));
+    expect(screen.getByText("Preparing Sam")).toBeTruthy();
+    expect(document.querySelector('img[src="blob:ticket-portrait"]')).toBeTruthy();
+    // Live without a video frame yet: no still in Sam's slot.
+    act(() => fake.push?.({ phase: "live" }));
+    expect(document.querySelector("img")).toBeNull();
+    act(() =>
+      fake.push?.({ phase: "ended", error: "The provider request failed.", portraitUrl: null }),
+    );
+    expect(document.querySelector("img")).toBeNull();
+    expect(document.querySelector("video")).toBeNull();
+    expect(screen.getByRole("alert").textContent).toBe("The provider request failed.");
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
   it("ducks Sam while a story clip plays and restores after", () => {
     const { rerender } = renderApp(true);
     expect(screen.getByTestId("ducking").textContent).toBe("true");

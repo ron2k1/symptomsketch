@@ -18,8 +18,6 @@ import {
   type CallView,
 } from "./support-call-model";
 
-const BASE_PORTRAIT = { src: "/assets/support-agent.jpg", width: 860, height: 1152 } as const;
-
 export function SupportCallCredits({ className }: { className?: string }) {
   return (
     <div className={cn("flex flex-col gap-0.5 text-xs text-muted-foreground", className)}>
@@ -124,15 +122,6 @@ export function SupportCall({ ticketId, onEnded }: SupportCallProps) {
       className="flex flex-col gap-4 rounded-xl border bg-card p-4"
     >
       <div className="flex items-start gap-4">
-        {idle ? (
-          <img
-            src={BASE_PORTRAIT.src}
-            width={BASE_PORTRAIT.width}
-            height={BASE_PORTRAIT.height}
-            alt=""
-            className="h-24 w-[4.5rem] shrink-0 rounded-lg object-cover"
-          />
-        ) : null}
         <div className="flex min-w-0 flex-col gap-1">
           <h3 id="support-call-title" className="text-base font-semibold">
             Talk to {SUPPORT_CALL_AGENT_NAME}, an AI support agent
@@ -146,15 +135,22 @@ export function SupportCall({ ticketId, onEnded }: SupportCallProps) {
         </div>
       </div>
 
-      {idle ? null : (
+      {/* Only live Sam fills this slot. The ticket's portrait shows (labelled) while the call is
+          still being prepared; after the call ends or fails the slot goes away. */}
+      {active ? (
         <div className="relative mx-auto aspect-[864/1152] w-full max-w-sm overflow-hidden rounded-xl bg-sand-soft">
           <SamVideo media={view.media} />
-          {!view.hasVideo && view.portraitUrl ? (
-            <img
-              src={view.portraitUrl}
-              alt=""
-              className="absolute inset-0 h-full w-full object-cover opacity-70"
-            />
+          {!live && !view.hasVideo && view.portraitUrl ? (
+            <>
+              <img
+                src={view.portraitUrl}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover opacity-70"
+              />
+              <span className="absolute inset-x-3 bottom-3 rounded-full bg-surface/90 px-3 py-1 text-center text-xs font-medium">
+                Preparing {SUPPORT_CALL_AGENT_NAME}
+              </span>
+            </>
           ) : null}
           <div className="absolute inset-x-3 top-3 flex items-center justify-between gap-2">
             <span
@@ -166,14 +162,14 @@ export function SupportCall({ ticketId, onEnded }: SupportCallProps) {
             >
               {SUPPORT_CALL_PHASE_LABELS[view.phase]}
             </span>
-            {live || view.phase === "ended" ? (
+            {live ? (
               <span className="rounded-full bg-surface/90 px-3 py-1 font-mono text-xs tabular-nums">
                 {formatClock(view.elapsedSeconds)} / {formatClock(view.capSeconds)}
               </span>
             ) : null}
           </div>
         </div>
-      )}
+      ) : null}
 
       {view.detail && active ? (
         <p className="text-sm text-muted-foreground">{view.detail}…</p>
@@ -188,7 +184,7 @@ export function SupportCall({ ticketId, onEnded }: SupportCallProps) {
         <div className="flex flex-col items-start gap-2">
           <Button type="button" className="min-h-11" disabled={elsewhere} onClick={start}>
             <Video aria-hidden />
-            {idle ? SUPPORT_CALL_COPY.start : "Talk to support again"}
+            {idle ? SUPPORT_CALL_COPY.start : view.error ? "Retry" : "Talk to support again"}
           </Button>
           {elsewhere ? (
             <p role="status" className="text-sm text-muted-foreground">
