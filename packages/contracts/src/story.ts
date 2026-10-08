@@ -38,6 +38,9 @@ export const STORY_LIMITS = {
   beatsJsonMaxBytes: 64 * 1024,
   /** Stories one case can send to support (each carries a reel of up to reelMaxBytes). */
   storiesPerCaseMax: 5,
+  /** P2: what support types to describe the fix, and how many scenes the ending gets. */
+  endingTextMaxChars: 400,
+  endingMaxScenes: 2,
 } as const;
 
 export const FAST_H3_MODEL_NAME = "reactor/fast-h3";
@@ -131,6 +134,8 @@ export const STORY_ROUTES = {
   ticketStory: "/api/tickets/:ticketId/story",
   ticketStoryReel: "/api/tickets/:ticketId/story/reel",
   ticketStoryFrame: "/api/tickets/:ticketId/story/frame",
+  endingToken: "/api/tickets/:ticketId/story/ending/token",
+  endingDirector: "/api/tickets/:ticketId/story/ending/director",
 } as const;
 
 const enc = encodeURIComponent;
@@ -141,6 +146,8 @@ export const storyPaths = {
   ticketStory: (ticketId: string) => `/api/tickets/${enc(ticketId)}/story`,
   ticketStoryReel: (ticketId: string) => `/api/tickets/${enc(ticketId)}/story/reel`,
   ticketStoryFrame: (ticketId: string) => `/api/tickets/${enc(ticketId)}/story/frame`,
+  endingToken: (ticketId: string) => `/api/tickets/${enc(ticketId)}/story/ending/token`,
+  endingDirector: (ticketId: string) => `/api/tickets/${enc(ticketId)}/story/ending/director`,
   /** Client route of the story page. */
   page: (caseId: string) => `/cases/${enc(caseId)}/story`,
 } as const;
@@ -191,3 +198,19 @@ export type StorySubmitResponse = z.infer<typeof StorySubmitResponse>;
 
 export const TicketStoryResponse = z.object({ story: TicketStory.nullable() });
 export type TicketStoryResponse = z.infer<typeof TicketStoryResponse>;
+
+// ---- P2: support writes the ending (the fix), played from the story's last frame ----
+
+/** POST STORY_ROUTES.endingDirector (support only). */
+export const StoryEndingRequest = z.object({
+  text: z.string().trim().min(3).max(STORY_LIMITS.endingTextMaxChars),
+});
+export type StoryEndingRequest = z.infer<typeof StoryEndingRequest>;
+
+export const StoryEndingResponse = z.object({
+  /** 1-2 scenes: the fix applied from the story's last frame, then (optionally) the product working. */
+  scenes: z.array(StoryScene).min(1).max(STORY_LIMITS.endingMaxScenes),
+  modelId: z.string(),
+  latencyMs: z.number().int().nonnegative(),
+});
+export type StoryEndingResponse = z.infer<typeof StoryEndingResponse>;

@@ -27,7 +27,7 @@ import {
 export const DIRECTOR_PROMPT_VERSION = "story-director-v1";
 export const DIRECTOR_TIMEOUT_MS = 45_000;
 /** Words, not chars: the model counts words far better; 900 chars is the hard cap after that. */
-const PROMPT_WORD_TARGET = 110;
+export const PROMPT_WORD_TARGET = 110;
 
 export const DIRECTOR_SYSTEM_PROMPT = `You are the story director of "Story mode" in a product-support app. A customer is showing support what their product did, as a short interactive story. A real-time video model renders each scene you write as a ${STORY_LIMITS.clipSeconds.toFixed(1)}-second clip WITH generated sound, and every scene continues directly from the last frame of the scene before it.
 
@@ -80,7 +80,7 @@ export function fenceData(text: string, max: number): string {
     .slice(0, max);
 }
 
-function beatLines(beats: readonly StoryBeatRecord[]): string[] {
+export function beatLines(beats: readonly StoryBeatRecord[]): string[] {
   return beats.map(
     (b, i) =>
       `${i + 1}. [${actForBeat(i + 1)}] ${b.custom ? "(typed by the customer) " : ""}${fenceData(b.label, STORY_LIMITS.choiceMaxChars)}: ${fenceData(b.caption, STORY_LIMITS.captionMaxChars)}`,
@@ -141,7 +141,7 @@ export function buildDirectorTask(req: StoryDirectorRequest, data: StoryCaseData
 
 // ---- output schema + validation ----
 
-const sceneJson = {
+export const sceneJson = {
   type: "object",
   properties: {
     label: { type: "string" },
@@ -182,9 +182,9 @@ export function clampPrompt(text: string, max: number): string {
   return at > max / 2 ? cut.slice(0, at + 1) : clampWords(t, max);
 }
 
-const RawScene = z.object({ label: z.string(), caption: z.string(), prompt: z.string() });
+export const RawScene = z.object({ label: z.string(), caption: z.string(), prompt: z.string() });
 
-function normalizeScene(raw: z.infer<typeof RawScene>): StoryScene {
+export function normalizeScene(raw: z.infer<typeof RawScene>): StoryScene {
   return StoryScene.parse({
     label: clampWords(raw.label, STORY_LIMITS.choiceMaxChars),
     caption: clampWords(raw.caption, STORY_LIMITS.captionMaxChars),

@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS case_stories (
 CREATE INDEX IF NOT EXISTS idx_case_stories_case ON case_stories(case_id, created_at);
 `;
 
-interface StoryRow {
+export interface StoryRow {
   id: string;
   case_id: string;
   ticket_id: string | null;
@@ -108,7 +108,7 @@ function liveTicketId(db: Db, caseId: string): string | null {
   return row?.id ?? null;
 }
 
-function latestStory(db: Db, caseId: string, storyId?: string): StoryRow | undefined {
+export function latestStory(db: Db, caseId: string, storyId?: string): StoryRow | undefined {
   if (storyId) {
     return getRow<StoryRow>(
       db,

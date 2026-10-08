@@ -1,13 +1,17 @@
-import type { Router } from "express";
+import type { Request, Router } from "express";
 import {
   FAST_H3_MODEL_NAME,
   STORY_LIMITS,
   STORY_ROUTES,
   StoryDirectorRequest,
+  StoryEndingRequest,
+  type StoryBeatRecord,
   type StoryDirectorResponse,
+  type StoryEndingResponse,
   type StoryTokenResponse,
 } from "@symptomsketch/contracts";
 import type { AppContext } from "../context.ts";
+import { fromJson, getRow } from "../db/index.ts";
 import { bumpSessionCounter, limiterFor } from "../domain/leases.ts";
 import { getFixture } from "../domain/catalog.ts";
 import {
@@ -17,7 +21,7 @@ import {
   requireOwnedActiveCase,
 } from "../domain/plans.ts";
 import { AppError } from "../http/errors.ts";
-import { requireCustomerAccess } from "../http/session.ts";
+import { requireCustomerAccess, requireSupport } from "../http/session.ts";
 import { param, parseBody } from "../http/validate.ts";
 import { GeminiError } from "../providers/gemini-client.ts";
 import { geminiFor } from "../providers/planner.ts";
@@ -27,8 +31,10 @@ import {
   mintReactorToken,
   type ReactorToken,
 } from "../providers/reactor-token.ts";
+import { loadTicketForSupport } from "../support/access.ts";
 import { type StoryCaseData, arcState, actForBeat, runDirector } from "./director.ts";
-import { registerStorySubmit } from "./submit.ts";
+import { runEndingDirector } from "./ending.ts";
+import { latestStory, registerStorySubmit } from "./submit.ts";
 
 type Minter = (ctx: AppContext) => Promise<ReactorToken>;
 
@@ -90,9 +96,56 @@ function mapDirectorError(err: unknown): AppError {
   return new AppError("PROVIDER_FAILED");
 }
 
+/** Rate-limit, mint one max_sessions=1 FastH3 token, count it. Errors are code-only. */
+async function mintFor(ctx: AppContext, sessionId: string): Promise<StoryTokenResponse> {
+  limiterFor(ctx).take("reactorToken", sessionId);
+  let token: ReactorToken;
+  try {
+    token = await (minters.get(ctx) ?? defaultMinter)(ctx);
+  } catch (err) {
+    if (err instanceof ReactorTokenError) {
+      console.warn(
+        `[story] token failed code=${err.code} reason=${err.reason} status=${err.status ?? "-"}`,
+      );
+      throw new AppError(err.code);
+    }
+    console.warn("[story] token failed code=REACTOR_UNAVAILABLE reason=unexpected");
+    throw new AppError("REACTOR_UNAVAILABLE");
+  }
+  bumpSessionCounter(ctx.db, sessionId, "token_issues");
+  return {
+    jwt: token.jwt,
+    expiresAt: token.expiresAt,
+    modelName: FAST_H3_MODEL_NAME,
+    clipSeconds: STORY_LIMITS.clipSeconds,
+    sessionMaxSeconds: STORY_LIMITS.sessionMaxSeconds,
+  };
+}
+
+/** P2: support-only access to a ticket's customer story (it must have a last frame to start from). */
+function endingContext(ctx: AppContext, req: Request) {
+  const session = requireSupport(req);
+  const ticket = loadTicketForSupport(ctx, session, param(req, "ticketId"));
+  const kase = getRow<AiCaseRow & { title: string }>(
+    ctx.db,
+    "SELECT * FROM cases WHERE id = ?",
+    ticket.case_id,
+  );
+  if (!kase) throw new AppError("NOT_FOUND");
+  const story = latestStory(ctx.db, ticket.case_id);
+  if (!story) throw new AppError("NOT_FOUND", "This ticket has no customer story yet.");
+  if (!story.frame_asset_id) {
+    throw new AppError("VALIDATION_FAILED", "This story has no last frame to continue from.", 409);
+  }
+  const beats = fromJson<{ beats?: StoryBeatRecord[] }>(story.beats_json, {}).beats ?? [];
+  return { session, kase, beats };
+}
+
 /**
- * POST STORY_ROUTES.token     -> StoryTokenResponse (owner of an active case, customer access)
- * POST STORY_ROUTES.director  StoryDirectorRequest -> StoryDirectorResponse (same auth)
+ * POST STORY_ROUTES.token          -> StoryTokenResponse (owner of an active case, customer access)
+ * POST STORY_ROUTES.director       StoryDirectorRequest -> StoryDirectorResponse (same auth)
+ * POST STORY_ROUTES.endingToken    -> StoryTokenResponse (support, on a ticket with a story)
+ * POST STORY_ROUTES.endingDirector StoryEndingRequest -> StoryEndingResponse (support)
  * Send-to-support + ticket reads: ./submit.ts
  */
 export function register(router: Router, ctx: AppContext): void {
@@ -100,30 +153,42 @@ export function register(router: Router, ctx: AppContext): void {
     const session = requireCustomerAccess(req);
     const kase = requireOwnedActiveCase(ctx.db, session, param(req, "caseId"));
     await storyCaseData(ctx, kase, false);
-    limiterFor(ctx).take("reactorToken", session.id);
-    let token: ReactorToken;
-    try {
-      token = await (minters.get(ctx) ?? defaultMinter)(ctx);
-    } catch (err) {
-      if (err instanceof ReactorTokenError) {
-        console.warn(
-          `[story] token failed code=${err.code} reason=${err.reason} status=${err.status ?? "-"}`,
-        );
-        throw new AppError(err.code);
-      }
-      console.warn("[story] token failed code=REACTOR_UNAVAILABLE reason=unexpected");
-      throw new AppError("REACTOR_UNAVAILABLE");
-    }
-    bumpSessionCounter(ctx.db, session.id, "token_issues");
+    const body = await mintFor(ctx, session.id);
     console.log(`[story] fast-h3 token issued case=${kase.id}`);
-    const body: StoryTokenResponse = {
-      jwt: token.jwt,
-      expiresAt: token.expiresAt,
-      modelName: FAST_H3_MODEL_NAME,
-      clipSeconds: STORY_LIMITS.clipSeconds,
-      sessionMaxSeconds: STORY_LIMITS.sessionMaxSeconds,
-    };
     res.set("Cache-Control", "no-store");
+    res.json(body);
+  });
+
+  router.post(STORY_ROUTES.endingToken, async (req, res) => {
+    const { session, kase } = endingContext(ctx, req);
+    const body = await mintFor(ctx, session.id);
+    console.log(`[story] fast-h3 ending token issued case=${kase.id}`);
+    res.set("Cache-Control", "no-store");
+    res.json(body);
+  });
+
+  router.post(STORY_ROUTES.endingDirector, async (req, res) => {
+    const { session, kase, beats } = endingContext(ctx, req);
+    const input = parseBody(StoryEndingRequest, req);
+    const data = await storyCaseData(ctx, kase, false);
+    limiterFor(ctx).take("plan", session.id);
+    bumpSessionCounter(ctx.db, session.id, "plan_calls");
+    let out;
+    try {
+      out = await runEndingDirector(geminiFor(ctx), { beats, text: input.text }, data, {
+        model: ctx.config.geminiTextModel,
+      });
+    } catch (err) {
+      throw mapDirectorError(err);
+    }
+    console.log(
+      `[story] ending ok case=${kase.id} scenes=${out.scenes.length} ms=${out.latencyMs}`,
+    );
+    const body: StoryEndingResponse = {
+      scenes: out.scenes,
+      modelId: out.modelId,
+      latencyMs: out.latencyMs,
+    };
     res.json(body);
   });
 
