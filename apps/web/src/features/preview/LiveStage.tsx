@@ -9,7 +9,9 @@ import {
   type Purpose,
   type Take,
 } from "@symptomsketch/contracts";
+import { errorMessage, retryExport } from "@/lib/api";
 import { formatTakeNumber } from "@/lib/format";
+import { newIdempotencyKey } from "@/lib/ids";
 import { checkRecordingSupport } from "@/features/capture/recorder";
 import { useClipCapture } from "@/features/capture/useClipCapture";
 import { LIVE_COPY } from "./live-policy";
@@ -39,6 +41,8 @@ export interface LiveStageProps {
   compareOriginal: boolean;
   /** Optional (additive): clears selectedTake so the stage returns to the live preview controls. */
   onExitTake?(): void;
+  /** Receives the take after a stage Retry of its failed MP4 export. */
+  onTakeUpdated?(take: Take): void;
 }
 
 const UNSUPPORTED = `${ERROR_COPY.RECORDING_UNSUPPORTED} Clipping needs current desktop Chrome.`;
@@ -72,6 +76,26 @@ export function LiveStage(props: LiveStageProps) {
   });
   const cv = capture.view;
   const planTiming = usePlanRequestTiming(caseId);
+  const [retryingTake, setRetryingTake] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const onTakeUpdated = props.onTakeUpdated;
+  const retryTake =
+    selectedTake?.processingState === "failed" && selectedTake.retryable && onTakeUpdated
+      ? async () => {
+          setRetryingTake(true);
+          setRetryError(null);
+          try {
+            const res = await retryExport(selectedTake.id, {
+              idempotencyKey: newIdempotencyKey(),
+            });
+            onTakeUpdated(res.take);
+          } catch (err) {
+            setRetryError(errorMessage(err));
+          } finally {
+            setRetryingTake(false);
+          }
+        }
+      : undefined;
   const [started, setStarted] = useState(false);
 
   // Clipping never interrupts the session, so the stage reports the save on top of it.
@@ -184,9 +208,13 @@ export function LiveStage(props: LiveStageProps) {
                 number: selectedTake.number,
                 mediaUrl: selectedTake.mediaUrl,
                 stateLabel: takeShelfLabel(selectedTake),
+                failed: selectedTake.processingState === "failed",
               }
             : null
         }
+        onRetryTake={retryTake ? () => void retryTake() : undefined}
+        retryingTake={retryingTake}
+        retryTakeError={retryError}
         compareOriginal={props.compareOriginal}
         recordingSec={recordingSec}
         updating={session.status === "updating"}

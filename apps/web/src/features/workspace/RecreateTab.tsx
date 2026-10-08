@@ -241,6 +241,7 @@ export function RecreateTab() {
               selectedTake={readyTake}
               compareOriginal={state.compareOriginal}
               onExitTake={() => ws.selectTake(null)}
+              onTakeUpdated={(take) => dispatch({ type: "take_upsert", take })}
             />
           ) : (
             <div className="flex aspect-video items-center justify-center p-6 text-center text-sm text-muted-foreground">

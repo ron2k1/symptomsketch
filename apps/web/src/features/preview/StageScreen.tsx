@@ -1,5 +1,5 @@
 import { useState, type ReactNode, type RefObject } from "react";
-import { LoaderCircle, TriangleAlert } from "lucide-react";
+import { LoaderCircle, RotateCcw, TriangleAlert } from "lucide-react";
 import { ReactorMark } from "@/components/ReactorMark";
 import { formatDuration, formatTakeNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -14,7 +14,18 @@ export interface StageScreenProps {
   showLiveVideo: boolean;
   isLive: boolean;
   /** Saved take mode: its final MP4 replaces the live player. */
-  take: { id: string; number: number; mediaUrl: string | null; stateLabel: string } | null;
+  take: {
+    id: string;
+    number: number;
+    mediaUrl: string | null;
+    stateLabel: string;
+    /** The MP4 export failed (otherwise a missing mediaUrl means it is still being produced). */
+    failed: boolean;
+  } | null;
+  /** Retries a failed MP4 export; omitted when the take cannot be retried. */
+  onRetryTake?: (() => void) | undefined;
+  retryingTake?: boolean;
+  retryTakeError?: string | null;
   compareOriginal: boolean;
   recordingSec: number | null;
   updating: boolean;
@@ -75,7 +86,14 @@ export function StageScreen(p: StageScreenProps) {
             aria-label={`${formatTakeNumber(p.take.number)} final MP4`}
           />
         )}
-        {p.take && !takeSrc && <Still src={p.referenceImageUrl} alt={p.productLabel} />}
+        {p.take && !takeSrc && (
+          <TakeNotReady
+            failed={p.take.failed}
+            onRetry={p.onRetryTake}
+            busy={!!p.retryingTake}
+            error={p.retryTakeError ?? null}
+          />
+        )}
         {p.compareOriginal && (
           <div className="absolute inset-0 z-20">
             <Still src={p.referenceImageUrl} alt={`${p.productLabel}, original reference`} />
@@ -123,6 +141,56 @@ export function StageScreen(p: StageScreenProps) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** A saved take without its MP4: say so honestly instead of showing the reference still. */
+function TakeNotReady({
+  failed,
+  onRetry,
+  busy,
+  error,
+}: {
+  failed: boolean;
+  onRetry: (() => void) | undefined;
+  busy: boolean;
+  error: string | null;
+}) {
+  return (
+    <div
+      role={failed ? "alert" : "status"}
+      className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background p-4 text-center"
+    >
+      {failed ? (
+        <TriangleAlert className="size-6 text-warning" aria-hidden />
+      ) : (
+        <LoaderCircle className="size-6 animate-spin text-neon" aria-hidden />
+      )}
+      <p className="text-[15px] font-medium text-foreground">
+        {failed ? "MP4 not ready: the export failed" : "MP4 not ready yet"}
+      </p>
+      <p className="text-[13px] text-muted-foreground">
+        {failed
+          ? "The recorded clip could not be turned into an MP4."
+          : "The recorded clip is still being turned into an MP4."}
+      </p>
+      {failed && onRetry ? (
+        <button
+          type="button"
+          className="mt-1 inline-flex min-h-11 items-center gap-2 rounded-md border border-border bg-surface px-4 text-sm font-medium disabled:opacity-60"
+          disabled={busy}
+          onClick={onRetry}
+        >
+          {busy ? (
+            <LoaderCircle className="size-4 animate-spin" aria-hidden />
+          ) : (
+            <RotateCcw className="size-4" aria-hidden />
+          )}
+          Retry
+        </button>
+      ) : null}
+      {error ? <p className="text-[13px] text-destructive">{error}</p> : null}
     </div>
   );
 }

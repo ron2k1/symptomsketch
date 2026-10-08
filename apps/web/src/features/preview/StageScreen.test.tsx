@@ -1,6 +1,6 @@
 import { createRef } from "react";
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { StageScreen, type StageScreenProps } from "./StageScreen";
 
 function props(over: Partial<StageScreenProps>): StageScreenProps {
@@ -30,7 +30,13 @@ describe("StageScreen chips", () => {
     const { container } = render(
       <StageScreen
         {...props({
-          take: { id: "tk_1", number: 2, mediaUrl: "/api/takes/tk_1/media", stateLabel: "Ready" },
+          take: {
+            id: "tk_1",
+            number: 2,
+            mediaUrl: "/api/takes/tk_1/media",
+            stateLabel: "Ready",
+            failed: false,
+          },
         })}
       />,
     );
@@ -45,7 +51,13 @@ describe("StageScreen chips", () => {
     const { container } = render(
       <StageScreen
         {...props({
-          take: { id: "tk_1", number: 2, mediaUrl: "/api/takes/tk_1/media", stateLabel: "Ready" },
+          take: {
+            id: "tk_1",
+            number: 2,
+            mediaUrl: "/api/takes/tk_1/media",
+            stateLabel: "Ready",
+            failed: false,
+          },
         })}
       />,
     );
@@ -69,5 +81,41 @@ describe("StageScreen chips", () => {
     const badge = frameOf(container).querySelector("[data-reactor-mark]");
     expect(badge?.textContent).toMatch(/Live · Reactor X2/);
     expect(badge?.className).toContain("font-reactor");
+  });
+
+  it("never shows the reference still under the Recorded chip while the MP4 is being made", () => {
+    const { container } = render(
+      <StageScreen
+        {...props({
+          take: { id: "tk_1", number: 2, mediaUrl: null, stateLabel: "Processing", failed: false },
+        })}
+      />,
+    );
+    const frame = frameOf(container);
+    expect(frame.querySelector("img[src='/api/assets/ref/media']")).toBeNull();
+    expect(frame.contains(screen.getByText(/MP4 not ready/))).toBe(true);
+    expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
+  });
+
+  it("offers Retry when the take's MP4 export failed", () => {
+    const onRetryTake = vi.fn();
+    const { container } = render(
+      <StageScreen
+        {...props({
+          take: {
+            id: "tk_1",
+            number: 2,
+            mediaUrl: null,
+            stateLabel: "Export failed",
+            failed: true,
+          },
+          onRetryTake,
+        })}
+      />,
+    );
+    expect(frameOf(container).querySelector("img[src='/api/assets/ref/media']")).toBeNull();
+    expect(screen.getByRole("alert").textContent).toMatch(/MP4 not ready/);
+    fireEvent.click(screen.getByRole("button", { name: /Retry/ }));
+    expect(onRetryTake).toHaveBeenCalledTimes(1);
   });
 });
