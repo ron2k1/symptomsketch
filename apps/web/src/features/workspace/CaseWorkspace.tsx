@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { Navigate, useParams } from "react-router-dom";
 import { LoaderCircle } from "lucide-react";
 import {
   APP_PATHS,
@@ -8,7 +8,7 @@ import {
   takeShelfLabel,
   type Take,
 } from "@symptomsketch/contracts";
-import { Button } from "@/components/ui/button";
+import { CaseLoadError } from "@/components/CaseLoadError";
 import { useDocumentTitle } from "@/lib/document-title";
 import { formatTakeNumber } from "@/lib/format";
 import { CustomerSupportTab } from "@/features/support/CustomerSupportTab";
@@ -59,35 +59,6 @@ function TakePoller() {
   return null;
 }
 
-const isAccessCode = (code: string) => code === "ACCESS_REQUIRED" || code === "SESSION_EXPIRED";
-
-function LoadError({ code, message }: { code: string; message: string }) {
-  const needsAccess = isAccessCode(code);
-  return (
-    <div className="mx-auto max-w-md space-y-4 rounded-[var(--radius-card)] border border-border bg-card p-6 text-center">
-      <h1 className="text-xl font-semibold">
-        {needsAccess ? "Enter the demo access code" : "This case could not be opened"}
-      </h1>
-      <p className="text-sm text-muted-foreground">{message}</p>
-      <div className="flex flex-wrap justify-center gap-2">
-        <Button asChild className="min-h-11">
-          <Link to={APP_PATHS.landing()}>Back to products</Link>
-        </Button>
-        {!needsAccess ? (
-          <Button
-            type="button"
-            variant="outline"
-            className="min-h-11"
-            onClick={() => window.location.reload()}
-          >
-            Try again
-          </Button>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
 function WorkspaceShell() {
   const ws = useWorkspace();
   const { state, tab, dispatch, liveMessage } = ws;
@@ -102,7 +73,7 @@ function WorkspaceShell() {
 
   useDocumentTitle(
     ...(state.loadError
-      ? [isAccessCode(state.loadError.code) ? "Access code needed" : "Case unavailable"]
+      ? ["Case unavailable"]
       : caseData
         ? [CASE_TAB_LABELS[tab], ws.productName]
         : ["Opening case"]),
@@ -113,7 +84,7 @@ function WorkspaceShell() {
       <WorkspaceHeader />
       <main className="mx-auto max-w-[1600px] px-4 py-5 md:px-6">
         {state.loadError ? (
-          <LoadError code={state.loadError.code} message={state.loadError.message} />
+          <CaseLoadError code={state.loadError.code} message={state.loadError.message} />
         ) : !caseData ? (
           <p className="flex items-center justify-center gap-2 py-24 text-sm text-muted-foreground">
             <LoaderCircle className="size-4 animate-spin" aria-hidden />

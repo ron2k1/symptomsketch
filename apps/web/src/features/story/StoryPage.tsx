@@ -9,7 +9,8 @@ import {
 } from "@symptomsketch/contracts";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { errorMessage, getCase } from "@/lib/api";
+import { CaseLoadError } from "@/components/CaseLoadError";
+import { errorMessage, getCase, isApiClientError } from "@/lib/api";
 import { useDocumentTitle } from "@/lib/document-title";
 import { cn } from "@/lib/utils";
 import { ReactorQueueStrip, StoryTimeline } from "./StoryPanels";
@@ -38,7 +39,7 @@ const READINESS_CLASS = {
 export function StoryPage() {
   const { caseId = "" } = useParams();
   const [caseData, setCaseData] = useState<CaseDetail | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<{ code: string; message: string } | null>(null);
   useDocumentTitle("Story mode", caseData?.title);
 
   useEffect(() => {
@@ -46,7 +47,11 @@ export function StoryPage() {
     getCase(caseId, { signal: ac.signal })
       .then((r) => setCaseData(r.case))
       .catch((err) => {
-        if (!ac.signal.aborted) setLoadError(errorMessage(err));
+        if (ac.signal.aborted) return;
+        setLoadError({
+          code: isApiClientError(err) ? err.code : "INTERNAL_ERROR",
+          message: errorMessage(err),
+        });
       });
     return () => ac.abort();
   }, [caseId]);
@@ -72,12 +77,9 @@ export function StoryPage() {
       </header>
       <main className="mx-auto max-w-[1500px] px-4 py-5 md:px-6">
         {loadError ? (
-          <p
-            role="alert"
-            className="rounded-[var(--radius-card)] border border-border bg-card p-6 text-sm"
-          >
-            {loadError}
-          </p>
+          <div role="alert">
+            <CaseLoadError code={loadError.code} message={loadError.message} />
+          </div>
         ) : !caseData ? (
           <p className="flex items-center justify-center gap-2 py-24 text-sm text-muted-foreground">
             <LoaderCircle className="size-4 animate-spin" aria-hidden />
