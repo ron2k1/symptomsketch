@@ -1,6 +1,7 @@
 import {
   LIMITS,
   type SupportCallPhase,
+  type SupportCallPortraitSource,
   type SupportCallSpeaker,
   type SupportCallTranscriptLine,
 } from "@symptomsketch/contracts";
@@ -136,6 +137,8 @@ export interface CallView {
   micNotice: string | null;
   /** Object URL of the portrait this call uses (shown until video arrives). */
   portraitUrl: string | null;
+  /** Which portrait Sam was built from this call: the composite, or Sam's standard portrait. */
+  portraitSource: SupportCallPortraitSource | null;
   hasVideo: boolean;
   /** Sam's live output (main_video + main_audio) while the call runs; null otherwise. */
   media: MediaStream | null;
@@ -156,6 +159,7 @@ export const INITIAL_CALL_VIEW: CallView = {
   micOn: false,
   micNotice: null,
   portraitUrl: null,
+  portraitSource: null,
   hasVideo: false,
   media: null,
   liveAt: null,

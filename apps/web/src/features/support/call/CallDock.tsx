@@ -21,7 +21,11 @@ import {
   RotateCcw,
   X,
 } from "lucide-react";
-import { SUPPORT_CALL_AGENT_NAME, SUPPORT_CALL_PHASE_LABELS } from "@symptomsketch/contracts";
+import {
+  SUPPORT_CALL_AGENT_NAME,
+  SUPPORT_CALL_COPY,
+  SUPPORT_CALL_PHASE_LABELS,
+} from "@symptomsketch/contracts";
 import { cn } from "@/lib/utils";
 import {
   DOCK_MARGIN_PX,
@@ -198,6 +202,14 @@ function DockBody({ inPip, canPopOut, notice, videoRef, header, onPopOut }: Dock
           {view.micNotice || notice ? (
             <p className="px-3 pb-3 text-xs text-reactor-ink-foreground/80">
               {view.micNotice ?? notice}
+            </p>
+          ) : null}
+          {view.portraitSource === "base" ? (
+            <p
+              data-standard-portrait=""
+              className="px-3 pb-3 text-xs text-reactor-ink-foreground/80"
+            >
+              {SUPPORT_CALL_COPY.standardPortrait}
             </p>
           ) : null}
         </>

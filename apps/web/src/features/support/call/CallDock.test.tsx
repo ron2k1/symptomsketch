@@ -186,6 +186,16 @@ describe("CallDock", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
+  it("says so in the dock when the call uses Sam's standard portrait", async () => {
+    renderApp();
+    await startLiveCallAndLeave();
+    expect(document.querySelector("[data-call-dock] [data-standard-portrait]")).toBeNull();
+    act(() => fake.push?.({ portraitSource: "base" }));
+    expect(
+      document.querySelector("[data-call-dock] [data-standard-portrait]")?.textContent,
+    ).toMatch(/standard portrait/);
+  });
+
   it("ducks Sam while a story clip plays and restores after", () => {
     const { rerender } = renderApp(true);
     expect(screen.getByTestId("ducking").textContent).toBe("true");

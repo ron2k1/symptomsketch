@@ -1,4 +1,5 @@
 import {
+  LIMITS,
   SupportCallTranscriptLine,
   type CreateSupportCallTranscriptRequest,
   type SupportCallTranscript,
@@ -6,13 +7,15 @@ import {
 import { z } from "zod";
 import type { AppContext } from "../context.ts";
 import { allRows, fromJson, getRow, newId, now, toJson, type Db } from "../db/index.ts";
+import { AppError } from "../http/errors.ts";
 import type { SessionInfo } from "../http/session.ts";
 import type { TicketRow } from "./rows.ts";
 
 /**
  * Final transcripts of live AI support agent calls, stored on the ticket so Demo Support sees what
  * the agent and the customer said ("AI support agent call transcript"). The browser reports the
- * settled lines after end_call + disconnect; the same idempotency key returns the same record.
+ * settled lines as soon as the call ends; the same idempotency key returns the same record, and
+ * one ticket keeps at most LIMITS.supportCallTranscriptsPerTicket.
  */
 
 interface TranscriptRow {
@@ -63,6 +66,15 @@ export function saveCallTranscript(
     input.idempotencyKey,
   );
   if (existing) return { transcript: toDto(existing), created: false };
+  // The browser writes these, so bound what one ticket can collect.
+  const stored = getRow<{ n: number }>(
+    ctx.db,
+    "SELECT COUNT(*) AS n FROM support_call_transcripts WHERE ticket_id = ?",
+    ticket.id,
+  );
+  if ((stored?.n ?? 0) >= LIMITS.supportCallTranscriptsPerTicket) {
+    throw new AppError("RATE_LIMITED");
+  }
   const id = newId("sct");
   ctx.db
     .prepare(

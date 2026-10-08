@@ -75,7 +75,9 @@ export const LIMITS = {
   supportCallSayMaxChars: 500,
   supportCallLineMaxChars: 2_000,
   supportCallTranscriptMaxLines: 400,
-  /** How long a call waits for the Nano Banana composite before PROVIDER_TIMEOUT (Retry reuses it). */
+  /** Stored call transcripts per ticket; Demo Support's page polls them inline every 3 s. */
+  supportCallTranscriptsPerTicket: 20,
+  /** How long a call waits for the Nano Banana composite before it uses the base portrait. */
   supportCallPortraitTimeoutMs: 25_000,
   /** Budget for one composite generation; it keeps running after a call stops waiting. */
   supportCallPortraitGenerateTimeoutMs: 90_000,

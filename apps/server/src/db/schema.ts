@@ -317,6 +317,9 @@ CREATE TABLE support_call_transcripts (
 );
 CREATE INDEX idx_support_call_transcripts_ticket ON support_call_transcripts(ticket_id, created_at);
 `,
+  /* 4: which portrait (composite | base) the saved Reactor avatar was built from */ `
+ALTER TABLE ticket_support_calls ADD COLUMN avatar_portrait TEXT;
+`,
 ];
 
 /** Apply pending migrations inside one transaction each. Returns the resulting schema version. */

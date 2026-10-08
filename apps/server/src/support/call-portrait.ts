@@ -4,17 +4,16 @@
 // that same fictional agent holding the customer's own product (the ticket's normalized reference
 // photo), cached on disk. Generation starts when the ticket is sent (warmTicketPortrait), so the
 // composite is usually cached before the customer clicks "Talk to support now". A call that cannot
-// wait for it gets an honest PROVIDER_TIMEOUT (generation keeps going, so Retry finds it cached);
-// a failed composite is a provider error the customer can retry. The call never silently swaps in
-// the stock base portrait. The only generated person is the fictional agent. The customer's product
-// photo is passed as is and is not screened for people.
+// wait for it gets the base portrait while generation finishes in the background; only a failure
+// that a retry cannot fix (no product photo, a safety block) keeps the base portrait for good.
+// The only generated person is the fictional agent. The customer's product photo is passed as is
+// and is not screened for people.
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
-import { LIMITS } from "@symptomsketch/contracts";
+import { LIMITS, type SupportCallPortraitSource } from "@symptomsketch/contracts";
 import type { AppContext } from "../context.ts";
 import { getRow } from "../db/index.ts";
-import { AppError } from "../http/errors.ts";
 import { imagePart, type GeminiImageMime } from "../providers/gemini-client.ts";
 import {
   createNanoBanana,
@@ -90,36 +89,71 @@ export function setNanoBananaFor(ctx: AppContext, client: NanoBananaClient): voi
   clients.set(ctx, client);
 }
 
+export type PortraitSource = SupportCallPortraitSource;
+
+export interface TicketPortrait {
+  path: string;
+  source: PortraitSource;
+}
+
 function cacheDir(ctx: AppContext): string {
   return path.join(ctx.paths.root, "media", "support-agents");
 }
 
-/** True once the ticket has a cached composite (no paid call needed). */
+/** True once the ticket has a composite or a remembered permanent failure (no paid call needed). */
 export function portraitSettled(ctx: AppContext, ticketId: string): boolean {
-  return existsSync(path.join(cacheDir(ctx), `${ticketId}.jpg`));
+  const dir = cacheDir(ctx);
+  return (
+    existsSync(path.join(dir, `${ticketId}.jpg`)) ||
+    existsSync(path.join(dir, `${ticketId}.fallback`))
+  );
 }
 
-const inflight = new Map<string, Promise<string>>();
+/**
+ * Failures a retry cannot fix: the ticket has no usable product photo, or the provider blocked the
+ * input. Anything else (timeout, rate limit, network, provider error, config) is retried on the
+ * next request instead of costing the ticket its composite for good.
+ */
+const PERMANENT_FAILURES = new Set(["NOT_FOUND", "PROVIDER_BLOCKED"]);
+
+const inflight = new Map<string, Promise<TicketPortrait>>();
 
 /**
- * Path of this ticket's composite portrait, once generation settles. Generated once per ticket
- * (single flight, bounded by LIMITS.supportCallPortraitGenerateTimeoutMs) and cached. A failure
- * rejects, nothing is remembered, and the next request (the customer's Retry) generates again.
+ * The portrait this ticket's call uses, once generation settles. The composite is generated once
+ * per ticket (single flight, bounded by LIMITS.supportCallPortraitGenerateTimeoutMs) and cached.
+ * A permanent failure is remembered as a marker; any other failure serves the base portrait this
+ * time and leaves the ticket free to try again.
  */
-export function ticketPortrait(ctx: AppContext, ticket: TicketRow): Promise<string> {
+export function ticketPortrait(ctx: AppContext, ticket: TicketRow): Promise<TicketPortrait> {
   const dir = cacheDir(ctx);
   const composite = path.join(dir, `${ticket.id}.jpg`);
-  if (existsSync(composite)) return Promise.resolve(composite);
+  const fallback = path.join(dir, `${ticket.id}.fallback`);
+  const base: TicketPortrait = { path: basePortraitPath(ctx), source: "base" };
+  if (existsSync(composite)) return Promise.resolve({ path: composite, source: "composite" });
+  if (existsSync(fallback)) return Promise.resolve(base);
   const running = inflight.get(ticket.id);
   if (running) return running;
-  const work = (async (): Promise<string> => {
+  const work = (async (): Promise<TicketPortrait> => {
     try {
       const jpeg = await compositeForTicket(ctx, ticket);
       mkdirSync(dir, { recursive: true });
       const tmp = path.join(ctx.paths.tmp, `${ticket.id}-${Date.now()}.jpg`);
       writeFileSync(tmp, jpeg);
       renameSync(tmp, composite);
-      return composite;
+      return { path: composite, source: "composite" };
+    } catch (err) {
+      const e = err as { code?: string; reason?: string; httpStatus?: number | null };
+      const permanent = PERMANENT_FAILURES.has(e.code ?? "");
+      console.warn(
+        `[support-call] portrait fallback ticket=${ticket.id} code=${e.code ?? "-"} ` +
+          `reason=${e.reason ?? "-"} status=${e.httpStatus ?? "-"} ` +
+          (permanent ? "kept" : "will retry"),
+      );
+      if (permanent) {
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(fallback, `${e.code ?? "error"}/${e.reason ?? "-"}\n`);
+      }
+      return base;
     } finally {
       inflight.delete(ticket.id);
     }
@@ -129,14 +163,14 @@ export function ticketPortrait(ctx: AppContext, ticket: TicketRow): Promise<stri
 }
 
 /**
- * What a call gets now: the composite if it is ready within waitMs, else PROVIDER_TIMEOUT. A
- * composite still generating keeps going and is cached, so the customer's Retry picks it up.
+ * What a call gets now: the composite if it is ready within waitMs, else the base portrait. A
+ * composite still generating keeps going and is cached for the next call on this ticket.
  */
 export async function portraitForCall(
   ctx: AppContext,
   ticket: TicketRow,
   waitMs: number = LIMITS.supportCallPortraitTimeoutMs,
-): Promise<string> {
+): Promise<TicketPortrait> {
   const started = Date.now();
   let timer: NodeJS.Timeout | undefined;
   const late = new Promise<null>((resolve) => {
@@ -148,7 +182,7 @@ export async function portraitForCall(
     console.warn(
       `[support-call] portrait still generating ticket=${ticket.id} waited ms=${Date.now() - started}`,
     );
-    throw new AppError("PROVIDER_TIMEOUT");
+    return { path: basePortraitPath(ctx), source: "base" };
   } finally {
     clearTimeout(timer);
   }

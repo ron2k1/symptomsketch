@@ -16,6 +16,7 @@ import {
   fetchSupportCallPortrait,
   getSupportCallBrief,
   saveSupportCallAvatar,
+  type SupportCallPortrait,
 } from "@/lib/api";
 import {
   INITIAL_CALL_VIEW,
@@ -35,10 +36,12 @@ const LIVE_TIMEOUT_MS = 60_000;
 const END_CALL_TIMEOUT_MS = 5_000;
 /**
  * disconnect() waits out SDK reads still in flight (an unanswered end_call among them), which held
- * it ~25 s in the first live call. The session is ended either way, so the UI and the transcript
- * save stop waiting after this and the disconnect finishes in the background.
+ * it ~25 s in the first live call. The UI and the transcript save never wait on it (finish() hands
+ * both off first); this only bounds when end() resolves, and the disconnect finishes regardless.
  */
 const DISCONNECT_WAIT_MS = 5_000;
+/** The call ends this long before the provider's session hard stop would cut it off. */
+const SESSION_END_MARGIN_S = 10;
 
 const settleWithin = (p: Promise<unknown>, ms: number): Promise<boolean> =>
   Promise.race([
@@ -50,6 +53,26 @@ const settleWithin = (p: Promise<unknown>, ms: number): Promise<boolean> =>
   ]);
 
 class CallFailure extends Error {}
+
+/**
+ * Provider teardown for one call's own model. end_call only while a call runs (phase null skips
+ * it, e.g. on pagehide), then disconnect. The SDK never rejects endCall, and the provider also
+ * stops the session at max_session_duration_seconds.
+ */
+async function endSession(model: ViduS2AvatarModel, phase: string | null): Promise<void> {
+  const t0 = performance.now();
+  const ended =
+    phase !== null && ["starting", "warming_up", "live"].includes(phase)
+      ? await settleWithin(model.endCall(), END_CALL_TIMEOUT_MS)
+      : null;
+  const t1 = performance.now();
+  const disconnected = await settleWithin(model.disconnect(), DISCONNECT_WAIT_MS);
+  console.info(
+    `[support-call] end_call ${ended === null ? "skipped" : ended ? "ok" : "timeout"} ` +
+      `ms=${Math.round(t1 - t0)} disconnect ${disconnected ? "ok" : "pending"} ` +
+      `ms=${Math.round(performance.now() - t1)}`,
+  );
+}
 
 /**
  * One live AI support agent call on one ticket (Reactor Vidu S2 Avatar). A new SDK instance and a
@@ -65,6 +88,8 @@ export class SupportCallController {
   private abort: AbortController | null = null;
   private tick: number | null = null;
   private liveAt: number | null = null;
+  /** max_session_duration_seconds runs from connect, ~55 s before a first call goes live. */
+  private sessionEndsAt: number | null = null;
   private callStarted = false;
   private closing = false;
   private session: ViduS2AvatarSessionStateMessage | null = null;
@@ -97,20 +122,23 @@ export class SupportCallController {
         getSupportCallBrief(ticketId, { signal: abort.signal }),
         this.loadPortrait(ticketId, abort.signal),
       ]);
-      this.ensureOpen();
+      this.ensureOpen(abort.signal);
       this.set({ detail: "Connecting to the avatar service" });
       const token = await createSupportCallToken(ticketId);
-      this.ensureOpen();
+      this.ensureOpen(abort.signal);
       const model = new ViduS2AvatarModel();
       this.model = model;
       this.listen(model);
+      if (token.maxSessionDurationSeconds > 0) {
+        this.sessionEndsAt = Date.now() + token.maxSessionDurationSeconds * 1000;
+      }
       await model.connect(token.jwt);
-      this.ensureOpen();
+      this.ensureOpen(abort.signal);
       if (model.getStatus() !== "ready")
         throw new CallFailure("The avatar service did not get ready.");
       this.session = (await model.getState()) ?? this.session;
-      await this.bindAvatar(model, ticketId, brief, portrait);
-      this.ensureOpen();
+      await this.bindAvatar(model, ticketId, brief, portrait, abort.signal);
+      this.ensureOpen(abort.signal);
       this.set({ phase: "connecting", detail: `${SUPPORT_CALL_AGENT_NAME} is joining` });
       this.callStarted = true;
       await model.startCall({
@@ -121,13 +149,20 @@ export class SupportCallController {
         vad: { type: "semantic" },
         llm: { max_tokens: 90, temperature: 0.6 },
       });
+      this.ensureOpen(abort.signal);
       await this.waitFor((s) => s.phase === "live", LIVE_TIMEOUT_MS, "start_call");
-      this.ensureOpen();
+      this.ensureOpen(abort.signal);
       this.liveAt = Date.now();
-      this.set({ phase: "live", detail: null, liveAt: this.liveAt });
+      this.set({
+        phase: "live",
+        detail: null,
+        liveAt: this.liveAt,
+        capSeconds: this.capFor(this.session?.call_max_seconds),
+      });
       this.tick = window.setInterval(() => this.onTick(), 500);
     } catch (err) {
-      if (this.closing) return;
+      // Closing, or an earlier call ended while this await was pending: nothing left to tear down.
+      if (this.closing || abort.signal.aborted) return;
       const message =
         err instanceof CallFailure ? err.message : errorMessage(err) || "The call could not start.";
       await this.finish(null, message);
@@ -135,38 +170,46 @@ export class SupportCallController {
   }
 
   /**
-   * Runs alongside the brief: the per-ticket Nano Banana composite can take ~15 s. A failed
-   * composite rejects (no stock face is substituted), so the call ends with the error and Retry.
+   * Runs alongside the brief: the per-ticket Nano Banana composite can take ~15 s. The source says
+   * whether this call got the composite or Sam's standard portrait (the UI says which).
    */
-  private async loadPortrait(ticketId: string, signal: AbortSignal): Promise<Blob> {
+  private async loadPortrait(ticketId: string, signal: AbortSignal): Promise<SupportCallPortrait> {
     this.set({ detail: "Preparing the agent portrait" });
-    const blob = await fetchSupportCallPortrait(paths.ticketSupportCallPortrait(ticketId), {
+    const portrait = await fetchSupportCallPortrait(paths.ticketSupportCallPortrait(ticketId), {
       signal,
     });
-    this.set({ portraitUrl: URL.createObjectURL(blob) });
-    return blob;
+    this.set({
+      portraitUrl: URL.createObjectURL(portrait.blob),
+      portraitSource: portrait.source,
+    });
+    return portrait;
   }
 
   private async bindAvatar(
     model: ViduS2AvatarModel,
     ticketId: string,
     brief: SupportCallBriefResponse,
-    portrait: Blob,
+    portrait: SupportCallPortrait,
+    signal: AbortSignal,
   ): Promise<void> {
-    if (brief.avatarId) {
+    // Reuse the saved avatar only when it was built from this portrait: an avatar from the base
+    // portrait is rebuilt once Nano Banana's composite (the agent holding the product) exists.
+    if (brief.avatarId && brief.avatarPortraitSource === portrait.source) {
       this.set({ detail: "Loading the avatar" });
       await model.attachAvatar({ avatar_id: brief.avatarId });
+      this.ensureOpen(signal);
       const ok = await this.waitFor((s) => s.phase === "avatar_ready", 30_000, "attach_avatar")
         .then(() => true)
         .catch(() => false);
-      this.ensureOpen();
+      this.ensureOpen(signal);
       if (ok) return;
     }
     this.set({ detail: "Building the avatar" });
-    const image = await model.uploadFile(portrait, { name: "support-agent.jpg" });
-    this.ensureOpen();
+    const image = await model.uploadFile(portrait.blob, { name: "support-agent.jpg" });
+    this.ensureOpen(signal);
     const started = performance.now();
     await model.createAvatar({ image, name: SUPPORT_CALL_AGENT_NAME });
+    this.ensureOpen(signal);
     const state = await this.waitFor(
       (s) => s.phase === "avatar_ready",
       AVATAR_READY_TIMEOUT_MS,
@@ -176,7 +219,10 @@ export class SupportCallController {
     this.set({ avatarMs });
     console.info(`[support-call] create_avatar ready ms=${avatarMs}`);
     if (state.avatar_id) {
-      void saveSupportCallAvatar(ticketId, { avatarId: state.avatar_id }).catch(() => undefined);
+      void saveSupportCallAvatar(ticketId, {
+        avatarId: state.avatar_id,
+        portraitSource: portrait.source,
+      }).catch(() => undefined);
     }
   }
 
@@ -214,7 +260,7 @@ export class SupportCallController {
     this.session = s;
     for (const wake of [...this.waiters]) wake();
     const patch: Partial<CallView> = {};
-    if (s.call_max_seconds) patch.capSeconds = callCapSeconds(s.call_max_seconds);
+    if (s.call_max_seconds) patch.capSeconds = this.capFor(s.call_max_seconds);
     if (typeof s.call_elapsed_seconds === "number") patch.elapsedSeconds = s.call_elapsed_seconds;
     if (this.callStarted && !this.closing) {
       const phase = phaseFromSession(s.phase, true);
@@ -239,6 +285,14 @@ export class SupportCallController {
     }
     if (!this.out.getTracks().some((t) => t.id === track.id)) this.out.addTrack(track);
     this.set({ media: this.out, ...(isVideo ? { hasVideo: true } : {}) });
+  }
+
+  /** callCapSeconds, but never past the session's hard stop (minus a margin) once live. */
+  private capFor(callMaxSeconds: number | null | undefined): number {
+    const cap = callCapSeconds(callMaxSeconds ?? null);
+    if (this.sessionEndsAt === null || this.liveAt === null) return cap;
+    const left = Math.floor((this.sessionEndsAt - this.liveAt) / 1000) - SESSION_END_MARGIN_S;
+    return Math.max(0, Math.min(cap, left));
   }
 
   private waitFor(
@@ -335,13 +389,24 @@ export class SupportCallController {
     }
   }
 
-  /** End call -> disconnect -> report the transcript. Idempotent. */
+  /** End call -> report the transcript -> end_call + disconnect in the background. Idempotent. */
   async end(): Promise<void> {
     if (!this.busy) return;
     await this.finish("ended_by_client", null);
   }
 
-  private async finish(endReason: string | null, error: string | null): Promise<void> {
+  /**
+   * Everything up to the first await clears the shared fields: release() detaches this call's
+   * model, listeners and media, and the transcript is handed over at once. The provider teardown
+   * then runs on this call's own model, so "Talk to support again" right after End starts a clean
+   * call that this teardown cannot touch. `leaving` (pagehide/unmount) skips end_call and
+   * disconnects at once.
+   */
+  private async finish(
+    endReason: string | null,
+    error: string | null,
+    leaving = false,
+  ): Promise<void> {
     if (this.closing) return;
     this.closing = true;
     for (const wake of [...this.waiters]) wake();
@@ -349,27 +414,12 @@ export class SupportCallController {
     if (this.tick !== null) window.clearInterval(this.tick);
     this.tick = null;
     const model = this.model;
+    const phase = leaving ? null : (this.session?.phase ?? "");
     const duration =
       this.liveAt !== null
         ? Math.max(this.view.elapsedSeconds, (Date.now() - this.liveAt) / 1000)
         : 0;
     this.set({ phase: "ended", detail: null, error, micOn: false, endReason });
-    if (model) {
-      const t0 = performance.now();
-      const phase = this.session?.phase ?? "";
-      // The SDK never rejects endCall; disconnect below ends the session regardless.
-      const ended = ["starting", "warming_up", "live"].includes(phase)
-        ? await settleWithin(model.endCall(), END_CALL_TIMEOUT_MS)
-        : null;
-      const t1 = performance.now();
-      // The provider also stops the session at max_session_duration_seconds.
-      const disconnected = await settleWithin(model.disconnect(), DISCONNECT_WAIT_MS);
-      console.info(
-        `[support-call] end_call ${ended === null ? "skipped" : ended ? "ok" : "timeout"} ` +
-          `ms=${Math.round(t1 - t0)} disconnect ${disconnected ? "ok" : "pending"} ` +
-          `ms=${Math.round(performance.now() - t1)}`,
-      );
-    }
     this.release();
     if (this.callStarted && this.view.transcript.lines.length > 0) {
       this.onEnded?.({
@@ -378,6 +428,7 @@ export class SupportCallController {
         endReason: endReason ?? this.session?.end_reason ?? null,
       });
     }
+    if (model) await endSession(model, phase);
   }
 
   private release(): void {
@@ -392,8 +443,9 @@ export class SupportCallController {
     this.set({ hasVideo: false, media: null, portraitUrl: null });
   }
 
-  private ensureOpen(): void {
-    if (this.closing) throw new CallFailure("Call ended.");
+  /** Throws once this call is closing or was replaced by a newer start(). */
+  private ensureOpen(signal: AbortSignal): void {
+    if (this.closing || signal.aborted) throw new CallFailure("Call ended.");
   }
 
   private reset(): void {
@@ -401,13 +453,14 @@ export class SupportCallController {
     this.closing = false;
     this.callStarted = false;
     this.liveAt = null;
+    this.sessionEndsAt = null;
     this.session = null;
     this.lastCommandError = null;
   }
 
-  /** Unmount / pagehide: end and disconnect without waiting. */
+  /** Unmount / pagehide: save the transcript (keepalive) and disconnect without end_call. */
   dispose(): void {
-    if (this.busy) void this.finish("ended_by_client", null);
+    if (this.busy) void this.finish("ended_by_client", null, true);
     if (this.view.portraitUrl) URL.revokeObjectURL(this.view.portraitUrl);
   }
 }

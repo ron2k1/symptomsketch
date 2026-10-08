@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import {
+  LIMITS,
   paths,
   SUPPORT_CALL_MODEL,
   SUPPORT_CALL_PERSONA_OPENER,
@@ -282,6 +283,7 @@ test("brief: a package cached before the greeting cue is written again", async (
   assert.equal(briefRequests.length, before + 1);
   assert.ok(res.body.package.greeting.startsWith("Open the call by saying:"));
   assert.equal(res.body.avatarId, "av_9", "the saved avatar survives the rewrite");
+  assert.equal(res.body.avatarPortraitSource, null, "an avatar saved without a source is unknown");
 });
 
 test("brief: a provider failure is a bounded error and nothing is cached", async () => {
@@ -344,6 +346,7 @@ test("portrait: Nano Banana composites the agent with the ticket's product, cach
   });
   assert.equal(res.status, 200);
   assert.equal(res.res.headers.get("content-type"), "image/jpeg");
+  assert.equal(res.res.headers.get("x-portrait-source"), "composite");
   assert.equal(imageRequests.length, before + 1, "the call joins the warm-up, no second request");
   const req = imageRequests.at(-1)!;
   assert.equal(req.aspectRatio, "3:4");
@@ -355,6 +358,7 @@ test("portrait: Nano Banana composites the agent with the ticket's product, cach
     cookie: support.cookie,
   });
   assert.equal(staff.status, 200);
+  assert.equal(staff.res.headers.get("x-portrait-source"), "composite");
   assert.equal(imageRequests.length, before + 1, "served from the per-ticket cache");
 
   const stranger = await call(h.base, "GET", paths.ticketSupportCallPortrait(ticket.id), {
@@ -363,52 +367,51 @@ test("portrait: Nano Banana composites the agent with the ticket's product, cach
   assert.equal(stranger.status, 404);
 });
 
-test("portrait: a failed composite is a provider error, never the stock face; Retry regenerates", async () => {
+test("portrait: a timeout serves the base portrait and the next call tries again", async () => {
   useStubImages();
   imageFails = "ASSESSMENT_FAILED";
   try {
     const ticket = await submitTicket();
-    await assert.rejects(ticketPortrait(h.ctx, ticketRow(ticket.id)));
+    await ticketPortrait(h.ctx, ticketRow(ticket.id));
     const first = await call(h.base, "GET", paths.ticketSupportCallPortrait(ticket.id), {
       cookie: alice.cookie,
     });
-    assert.ok([502, 504].includes(first.status), `provider error status, got ${first.status}`);
-    assert.ok(
-      first.body.code === "PROVIDER_FAILED" || first.body.code === "PROVIDER_TIMEOUT",
-      `bounded code, got ${first.body.code}`,
-    );
-    assert.notEqual(first.res.headers.get("content-type"), "image/jpeg");
+    assert.equal(first.status, 200);
+    assert.equal(first.res.headers.get("x-portrait-source"), "base");
     imageFails = null;
     const before = imageRequests.length;
     const again = await call(h.base, "GET", paths.ticketSupportCallPortrait(ticket.id), {
       cookie: alice.cookie,
     });
-    assert.equal(again.status, 200);
-    assert.equal(again.res.headers.get("content-type"), "image/jpeg");
-    assert.equal(imageRequests.length, before + 1, "a failure is not remembered; Retry generates");
+    assert.equal(again.res.headers.get("x-portrait-source"), "composite");
+    assert.equal(imageRequests.length, before + 1, "a transient failure is not remembered");
   } finally {
     imageFails = null;
   }
 });
 
-test("portrait: a blocked composite is an honest error, never the base portrait", async () => {
+test("portrait: a blocked composite keeps the base portrait and is not retried", async () => {
   useStubImages();
   imageFails = "PROVIDER_BLOCKED";
   try {
     const ticket = await submitTicket();
-    await assert.rejects(ticketPortrait(h.ctx, ticketRow(ticket.id)));
-    const res = await call(h.base, "GET", paths.ticketSupportCallPortrait(ticket.id), {
-      cookie: alice.cookie,
-    });
-    assert.ok(res.status >= 400, `error status, got ${res.status}`);
-    assert.notEqual(res.res.headers.get("content-type"), "image/jpeg");
-    assert.equal(res.res.headers.get("x-portrait-source"), null);
+    await ticketPortrait(h.ctx, ticketRow(ticket.id));
+    imageFails = null;
+    const before = imageRequests.length;
+    for (let i = 0; i < 2; i += 1) {
+      const res = await call(h.base, "GET", paths.ticketSupportCallPortrait(ticket.id), {
+        cookie: alice.cookie,
+      });
+      assert.equal(res.status, 200);
+      assert.equal(res.res.headers.get("x-portrait-source"), "base");
+    }
+    assert.equal(imageRequests.length, before);
   } finally {
     imageFails = null;
   }
 });
 
-test("portrait: a slow composite is PROVIDER_TIMEOUT now and cached for the Retry", async () => {
+test("portrait: a slow composite serves base now and is cached for the next call", async () => {
   useStubImages();
   let release!: () => void;
   imageGate = new Promise<void>((resolve) => {
@@ -417,14 +420,12 @@ test("portrait: a slow composite is PROVIDER_TIMEOUT now and cached for the Retr
   try {
     const ticket = await submitTicket();
     const row = ticketRow(ticket.id);
-    await assert.rejects(portraitForCall(h.ctx, row, 20), (err: unknown) => {
-      assert.equal((err as { code?: string }).code, "PROVIDER_TIMEOUT", "the call stops waiting");
-      return true;
-    });
+    const now = await portraitForCall(h.ctx, row, 20);
+    assert.equal(now.source, "base", "the call stops waiting");
     release();
-    assert.match(await ticketPortrait(h.ctx, row), /\.jpg$/, "generation finished");
+    assert.equal((await ticketPortrait(h.ctx, row)).source, "composite", "generation finished");
     const before = imageRequests.length;
-    assert.match(await portraitForCall(h.ctx, row, 20), /\.jpg$/);
+    assert.equal((await portraitForCall(h.ctx, row, 20)).source, "composite");
     assert.equal(imageRequests.length, before, "served from the cache");
   } finally {
     imageGate = null;
@@ -432,31 +433,45 @@ test("portrait: a slow composite is PROVIDER_TIMEOUT now and cached for the Retr
   }
 });
 
-test("avatar id: saved per ticket and handed back with the brief", async () => {
+test("avatar id: saved per ticket with its portrait source and handed back with the brief", async () => {
   const ticket = await submitTicket();
   const bad = await call(h.base, "PUT", paths.ticketSupportCallAvatar(ticket.id), {
     cookie: alice.cookie,
-    body: { avatarId: "" },
+    body: { avatarId: "", portraitSource: "base" },
   });
   assert.equal(bad.status, 400);
-  const stranger = await call(h.base, "PUT", paths.ticketSupportCallAvatar(ticket.id), {
-    cookie: bob.cookie,
-    body: { avatarId: "av_123" },
-  });
-  assert.equal(stranger.status, 404);
-  const saved = await call(h.base, "PUT", paths.ticketSupportCallAvatar(ticket.id), {
+  const noSource = await call(h.base, "PUT", paths.ticketSupportCallAvatar(ticket.id), {
     cookie: alice.cookie,
     body: { avatarId: "av_123" },
   });
+  assert.equal(noSource.status, 400, "the portrait source is required");
+  const stranger = await call(h.base, "PUT", paths.ticketSupportCallAvatar(ticket.id), {
+    cookie: bob.cookie,
+    body: { avatarId: "av_123", portraitSource: "base" },
+  });
+  assert.equal(stranger.status, 404);
+  const briefFor = () =>
+    call<SupportCallBriefResponse>(h.base, "POST", paths.ticketSupportCallBrief(ticket.id), {
+      cookie: alice.cookie,
+    });
+  const saved = await call(h.base, "PUT", paths.ticketSupportCallAvatar(ticket.id), {
+    cookie: alice.cookie,
+    body: { avatarId: "av_123", portraitSource: "base" },
+  });
   assert.equal(saved.status, 200);
-  const brief = await call<SupportCallBriefResponse>(
-    h.base,
-    "POST",
-    paths.ticketSupportCallBrief(ticket.id),
-    { cookie: alice.cookie },
-  );
+  const brief = await briefFor();
   assert.equal(brief.status, 200);
   assert.equal(brief.body.avatarId, "av_123");
+  assert.equal(brief.body.avatarPortraitSource, "base");
+
+  // A later call built from the composite replaces the base-portrait avatar.
+  await call(h.base, "PUT", paths.ticketSupportCallAvatar(ticket.id), {
+    cookie: alice.cookie,
+    body: { avatarId: "av_456", portraitSource: "composite" },
+  });
+  const rebuilt = await briefFor();
+  assert.equal(rebuilt.body.avatarId, "av_456");
+  assert.equal(rebuilt.body.avatarPortraitSource, "composite");
 });
 
 test("transcript: stored once per idempotency key and shown to support only", async () => {
@@ -515,4 +530,31 @@ test("transcript: stored once per idempotency key and shown to support only", as
     [first.body.id],
   );
   assert.equal(asSupport.body.ticket.aiCallTranscripts?.[0]?.lines.length, 2);
+});
+
+test("transcript: one ticket keeps at most supportCallTranscriptsPerTicket calls", async () => {
+  const ticket = await submitTicket();
+  const body = (n: number) => ({
+    lines: [{ speaker: "user", text: `Call ${n}`, typed: true }],
+    durationSeconds: 5,
+    endReason: null,
+    idempotencyKey: `cap-transcript-${n}`,
+  });
+  for (let n = 0; n < LIMITS.supportCallTranscriptsPerTicket; n += 1) {
+    const res = await call(h.base, "POST", paths.ticketSupportCallTranscripts(ticket.id), {
+      cookie: alice.cookie,
+      body: body(n),
+    });
+    assert.equal(res.status, 201);
+  }
+  const over = await call(h.base, "POST", paths.ticketSupportCallTranscripts(ticket.id), {
+    cookie: alice.cookie,
+    body: body(LIMITS.supportCallTranscriptsPerTicket),
+  });
+  assert.equal(over.status, 429);
+  const replay = await call(h.base, "POST", paths.ticketSupportCallTranscripts(ticket.id), {
+    cookie: alice.cookie,
+    body: body(0),
+  });
+  assert.equal(replay.status, 200, "a replay of a stored call still answers");
 });

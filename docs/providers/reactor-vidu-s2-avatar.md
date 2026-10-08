@@ -32,21 +32,29 @@ model that makes the reenactment clips; Vidu S2 Avatar is only this call. Code:
 ## Call sequence (browser)
 
 1. In parallel: `POST .../support-call/brief` (Gemini, cached per ticket) and
-   `GET .../support-call/portrait` (Nano Banana composite, cached per ticket). Billing runs from
-   session ready, so nothing connects until both are in hand.
+   `GET .../support-call/portrait` (Nano Banana composite, cached per ticket; generation starts
+   when the ticket is sent, the call waits at most 25 s for it, and `X-Portrait-Source` says
+   `composite` or `base`). Billing runs from session ready, so nothing connects until both are in
+   hand.
 2. Token, `new ViduS2AvatarModel()`, `connect(jwt)`, `getStatus() === "ready"`, `getState()`.
-3. Avatar: `attachAvatar({ avatar_id })` when the ticket has a saved id (wait for `avatar_ready`,
-   30 s), else `uploadFile(blob, { name })` then `createAvatar({ image, name })` and wait for
-   `avatar_ready`; the new `avatar_id` is saved with `PUT .../support-call/avatar`.
+3. Avatar: `attachAvatar({ avatar_id })` when the ticket has a saved id built from the same
+   portrait (the brief's `avatarPortraitSource` equals `X-Portrait-Source`; wait for
+   `avatar_ready`, 30 s), else `uploadFile(blob, { name })` then `createAvatar({ image, name })` and
+   wait for `avatar_ready`; the new `avatar_id` and its portrait source are saved with
+   `PUT .../support-call/avatar`. An avatar built from the base portrait is rebuilt once the
+   composite exists.
 4. `startCall` with `persona`, `greeting`, `call_mode: "audio"`, `transcripts: true`,
    `vad: { type: "semantic" }` and `llm: { max_tokens: 90, temperature: 0.6 }`, then wait for
    `session_state.phase === "live"`. Optional fields are omitted rather than sent as null.
 5. `main_video` and `main_audio` go on one `MediaStream` on one `<video>`. Typed messages use
    `say({ text })`; the mic is published only after the customer turns it on (`publishMic` /
    `unpublishMic`); `interrupt()` is always reachable.
-6. End call, unmount or `pagehide`: `endCall()` (raced 5 s), `disconnect()` (awaited at most 5 s,
-   finishes in the background), then `POST .../support-call/transcripts` with the final lines. The
-   UI caps the call at 4 minutes against `call_max_seconds`.
+6. End call: the video and listeners are released and `POST .../support-call/transcripts` is sent
+   at once; `endCall()` (raced 5 s) and `disconnect()` then run in the background on that call's
+   own model, so "Talk to support again" right away starts a clean call. Unmount or `pagehide`
+   skip `endCall()` and disconnect at once (the transcript POST uses `keepalive`). The UI caps the
+   call at 4 minutes against `call_max_seconds`, and ends it 10 s before the session's
+   `max_session_duration_seconds` (counted from connect) when that comes first.
 
 ## Measured
 
@@ -79,7 +87,10 @@ effect.
   watched your clip of the robot vacuum jerking backward. Does it do this on all floor types?" and
   answered "Are you a real person?" with "No, I'm an AI support agent."
 - **`disconnect()` waits out SDK reads still in flight**, including an unanswered `end_call`, which
-  is why the first End call took about 25 s before the bounded wait.
+  is why the first End call took about 25 s before the bounded wait. A later browser run measured
+  End to "transcript added" at 10.1-10.2 s on 3 of 3 calls (`end_call` never answered within
+  5 s). The transcript save no longer waits for either step; that path is not yet re-measured
+  live.
 - Transcripts: `speaker` was `"character"` for Sam and `"user"` for the customer; only finals are
   stored. A typed `say()` line was never listed twice in either call (whether the model does not
   echo it, or the 15 s echo filter caught it, was not distinguished).
@@ -98,8 +109,12 @@ effect.
   composite has hands to hold the product. Manifest provenance: "AI-generated with Gemini Nano
   Banana; fictional person".
 - Per ticket: the base portrait plus the ticket's product reference photo, cached under
-  `DATA_DIR/media/support-agents/`. Any failure, or 25 s without a result, serves the base portrait
-  and writes a marker so it is not retried. Served to the owner customer and Demo Support only.
+  `DATA_DIR/media/support-agents/`. Generation starts when the ticket is sent and has 90 s. A call
+  that has waited 25 s gets the base portrait while generation keeps going and caches its result
+  for the next call (a browser run saw 25.0 s once, then 12.2 s on retry). A timeout, rate limit
+  or provider error is retried later; only no product photo or a safety block writes a marker
+  that keeps the base portrait. Served to the owner customer and Demo Support only. The product
+  photo is the customer's own upload and is not screened for people.
 
 ## Not verified
 

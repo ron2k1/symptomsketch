@@ -3,9 +3,11 @@ import {
   LIMITS,
   ROUTES,
   SUPPORT_CALL_MODEL,
+  SUPPORT_CALL_PORTRAIT_SOURCE_HEADER,
   paths,
   CreateSupportCallTranscriptRequest,
   SaveSupportCallAvatarRequest,
+  SupportCallPortraitSource,
   type OkResponse,
   type SupportCallBriefResponse,
   type SupportCallTokenResponse,
@@ -51,8 +53,9 @@ export function setSupportCallMinterFor(ctx: AppContext, minter: SupportCallMint
  *   POST ROUTES.ticketSupportCallToken -> SupportCallTokenResponse (max_sessions=1, ~300 s cap)
  *   POST ROUTES.ticketSupportCallBrief -> SupportCallBriefResponse (Gemini once per ticket, cached)
  *   GET  ROUTES.ticketSupportCallPortrait -> image/jpeg (Nano Banana composite when ready within
- *        LIMITS.supportCallPortraitTimeoutMs, else PROVIDER_TIMEOUT; a failure is PROVIDER_FAILED)
- *   PUT  ROUTES.ticketSupportCallAvatar  SaveSupportCallAvatarRequest -> OkResponse
+ *        LIMITS.supportCallPortraitTimeoutMs, else the base portrait; X-Portrait-Source says which)
+ *   PUT  ROUTES.ticketSupportCallAvatar  SaveSupportCallAvatarRequest -> OkResponse (avatar id +
+ *        the portrait it was built from, so a later call rebuilds once the composite exists)
  *   POST ROUTES.ticketSupportCallTranscripts CreateSupportCallTranscriptRequest
  *        -> SupportCallTranscript (201 new, 200 replay of the same idempotency key)
  */
@@ -102,10 +105,13 @@ export function registerSupportCall(router: Router, ctx: AppContext): void {
     } catch (err) {
       throw providerError("brief", ticket.id, err);
     }
+    const row = getCallRow(ctx, ticket.id);
+    const source = SupportCallPortraitSource.safeParse(row?.avatar_portrait);
     const body: SupportCallBriefResponse = {
       package: written.pkg,
       modelId: written.modelId,
-      avatarId: getCallRow(ctx, ticket.id)?.avatar_id ?? null,
+      avatarId: row?.avatar_id ?? null,
+      avatarPortraitSource: source.success ? source.data : null,
       portraitUrl: paths.ticketSupportCallPortrait(ticket.id),
     };
     res.json(body);
@@ -115,13 +121,9 @@ export function registerSupportCall(router: Router, ctx: AppContext): void {
     const session = requireSession(req);
     const ticket = loadTicketForViewer(ctx, session, param(req, "ticketId"));
     if (!portraitSettled(ctx, ticket.id)) limiterFor(ctx).take("supportCallPortrait", session.id);
-    let portrait: string;
-    try {
-      portrait = await portraitForCall(ctx, ticket);
-    } catch (err) {
-      throw err instanceof AppError ? err : providerError("portrait", ticket.id, err);
-    }
-    await sendFileWithRange(res, portrait, "image/jpeg");
+    const portrait = await portraitForCall(ctx, ticket);
+    res.set(SUPPORT_CALL_PORTRAIT_SOURCE_HEADER, portrait.source);
+    await sendFileWithRange(res, portrait.path, "image/jpeg");
   });
 
   router.put(ROUTES.ticketSupportCallAvatar, (req, res) => {
@@ -131,12 +133,12 @@ export function registerSupportCall(router: Router, ctx: AppContext): void {
     const ts = now();
     ctx.db
       .prepare(
-        `INSERT INTO ticket_support_calls (ticket_id, avatar_id, created_at, updated_at)
-           VALUES (?, ?, ?, ?)
+        `INSERT INTO ticket_support_calls (ticket_id, avatar_id, avatar_portrait, created_at,
+           updated_at) VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(ticket_id) DO UPDATE SET avatar_id = excluded.avatar_id,
-           updated_at = excluded.updated_at`,
+           avatar_portrait = excluded.avatar_portrait, updated_at = excluded.updated_at`,
       )
-      .run(ticket.id, input.avatarId, ts, ts);
+      .run(ticket.id, input.avatarId, input.portraitSource, ts, ts);
     const body: OkResponse = { ok: true };
     res.json(body);
   });
