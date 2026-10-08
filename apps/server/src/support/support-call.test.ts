@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import {
+  LIMITS,
   paths,
   SUPPORT_CALL_MODEL,
   SUPPORT_CALL_PERSONA_OPENER,
@@ -529,4 +530,31 @@ test("transcript: stored once per idempotency key and shown to support only", as
     [first.body.id],
   );
   assert.equal(asSupport.body.ticket.aiCallTranscripts?.[0]?.lines.length, 2);
+});
+
+test("transcript: one ticket keeps at most supportCallTranscriptsPerTicket calls", async () => {
+  const ticket = await submitTicket();
+  const body = (n: number) => ({
+    lines: [{ speaker: "user", text: `Call ${n}`, typed: true }],
+    durationSeconds: 5,
+    endReason: null,
+    idempotencyKey: `cap-transcript-${n}`,
+  });
+  for (let n = 0; n < LIMITS.supportCallTranscriptsPerTicket; n += 1) {
+    const res = await call(h.base, "POST", paths.ticketSupportCallTranscripts(ticket.id), {
+      cookie: alice.cookie,
+      body: body(n),
+    });
+    assert.equal(res.status, 201);
+  }
+  const over = await call(h.base, "POST", paths.ticketSupportCallTranscripts(ticket.id), {
+    cookie: alice.cookie,
+    body: body(LIMITS.supportCallTranscriptsPerTicket),
+  });
+  assert.equal(over.status, 429);
+  const replay = await call(h.base, "POST", paths.ticketSupportCallTranscripts(ticket.id), {
+    cookie: alice.cookie,
+    body: body(0),
+  });
+  assert.equal(replay.status, 200, "a replay of a stored call still answers");
 });
