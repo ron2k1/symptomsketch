@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Lock, LoaderCircle } from "lucide-react";
 import { LIMITS, PURPOSE_MODE_LABELS } from "@symptomsketch/contracts";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ProcedureForm } from "./ProcedureForm";
 import { ProductPanel } from "./ProductPanel";
+import { issuePrefill } from "./issue-prefill";
 import { currentPlan, isAccountLocked, procedureFor } from "./state";
 import { useWorkspace } from "./WorkspaceProvider";
 
@@ -26,6 +27,25 @@ export function IssueTab() {
   const [saving, setSaving] = useState(false);
   const caseData = state.caseData;
   const issue = state.issue;
+  const exampleIssue = ws.catalogProduct?.exampleIssue ?? null;
+  const offeredFor = useRef<string | null>(null);
+
+  // Demo products open with the catalog's example issue as an editable default (offered once).
+  useEffect(() => {
+    if (!caseData || !issue || !exampleIssue) return;
+    const text = issuePrefill({
+      ownerRole: caseData.ownerRole,
+      mode: caseData.mode,
+      locked: isAccountLocked(caseData),
+      offered: offeredFor.current === caseData.id,
+      savedAccount: caseData.originalAccount,
+      draftAccount: issue.originalAccount,
+      exampleIssue,
+    });
+    offeredFor.current = caseData.id;
+    if (text !== null) dispatch({ type: "issue_draft", patch: { originalAccount: text } });
+  }, [caseData, issue, exampleIssue, dispatch]);
+
   if (!caseData || !issue) return null;
 
   const locked = isAccountLocked(caseData);
@@ -33,6 +53,8 @@ export function IssueTab() {
   const isCustomerCase = caseData.ownerRole === "customer";
   const showProcedure = caseData.mode === "solution" || !isCustomerCase;
   const procedure = procedureFor(caseData, currentPlan(caseData, "solution"));
+  const showExampleHint =
+    !locked && exampleIssue !== null && issue.originalAccount.trim() === exampleIssue.trim();
 
   async function saveDraft() {
     const message = await ws.saveIssueDraft();
@@ -112,7 +134,13 @@ export function IssueTab() {
                   dispatch({ type: "issue_draft", patch: { originalAccount: e.target.value } })
                 }
                 onBlur={saveDraft}
+                aria-describedby={showExampleHint ? "issue-account-example" : undefined}
               />
+              {showExampleHint ? (
+                <p id="issue-account-example" className="text-[12.5px] text-muted-foreground">
+                  Prefilled with this demo&apos;s example. Edit it to match what you saw.
+                </p>
+              ) : null}
             </div>
 
             <div className="space-y-1.5">
