@@ -56,6 +56,7 @@
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   /* The concept uses one sans face throughout; `font-mono` call sites render in it too. */
   --font-mono: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-reactor: "JetBrains Mono", ui-monospace, monospace;
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
