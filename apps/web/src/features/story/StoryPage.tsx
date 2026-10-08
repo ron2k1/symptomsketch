@@ -187,7 +187,7 @@ function StoryWorkspace({ caseId, caseData }: { caseId: string; caseData: CaseDe
               className="absolute right-3 top-3 min-h-9"
               onClick={() => setMuted((m) => !m)}
               aria-pressed={muted}
-              aria-label={muted ? "Unmute story sound" : "Mute story sound"}
+              aria-label="Mute story sound"
             >
               {muted ? (
                 <VolumeX className="size-4" aria-hidden />
