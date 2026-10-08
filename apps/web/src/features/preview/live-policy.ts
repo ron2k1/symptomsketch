@@ -68,4 +68,8 @@ export const LIVE_COPY = {
   reconnectingDetail: "Switching to a fresh Reactor X2 session. The current plan is reapplied.",
   hiddenStop:
     "Preview stopped after 2 minutes in a background tab. Start it again when you are ready.",
+  guideUnavailable:
+    "Couldn't find the product in your photo: X2 will restyle the still without motion.",
+  guideNoRoom:
+    "The product fills too much (or too little) of your photo to move it: X2 will restyle the still without motion.",
 } as const;

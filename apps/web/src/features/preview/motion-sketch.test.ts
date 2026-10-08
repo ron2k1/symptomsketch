@@ -13,7 +13,7 @@ import {
   type MaskRect,
   type ProductRegion,
 } from "./motion-sketch";
-import { detectProductRegion } from "./product-region";
+import { MIN_BOX_SIDE, rectIoU, regionFromBox } from "./product-region";
 
 /**
  * Test-only geometry: a product facing screen-left on a 1600x1067 still. The app never ships a
@@ -248,8 +248,72 @@ describe("progress, pose and pointer path", () => {
   });
 });
 
-describe("detectProductRegion", () => {
-  it("returns no region for any photo (no fingerprint matching, no hand-measured masks)", () => {
-    expect(detectProductRegion()).toBeNull();
+describe("regionFromBox (Gemini box_2d -> product region)", () => {
+  const inside = (r: { x: number; y: number; w: number; h: number }) =>
+    r.x >= 0 && r.y >= 0 && r.x + r.w <= 1 + 1e-9 && r.y + r.h <= 1 + 1e-9;
+
+  it("maps [ymin, xmin, ymax, xmax] / 1000 to a box, centre, mask and facing", () => {
+    const region = regionFromBox([548, 300, 870, 764], "left")!;
+    expect(region.box.x).toBeCloseTo(0.3);
+    expect(region.box.y).toBeCloseTo(0.548);
+    expect(region.box.w).toBeCloseTo(0.464);
+    expect(region.box.h).toBeCloseTo(0.322);
+    expect(region.center.x).toBeCloseTo(0.532);
+    expect(region.center.y).toBeCloseTo(0.709);
+    expect(region.forward).toEqual({ x: -1, y: MOTION.minorAxis });
+    expect(regionFromBox([548, 300, 870, 764], "right")!.forward.x).toBe(1);
+    for (const s of region.mask) {
+      if (s.kind === "ellipse") {
+        expect(s.cx - s.rx).toBeGreaterThanOrEqual(region.box.x - 1e-9);
+        expect(s.cx + s.rx).toBeLessThanOrEqual(region.box.x + region.box.w + 1e-9);
+      } else {
+        expect(s.x).toBeGreaterThanOrEqual(region.box.x);
+        expect(s.x + s.w).toBeLessThanOrEqual(region.box.x + region.box.w);
+      }
+    }
+  });
+
+  it("takes the clean plate from the wider background side, never overlapping the box", () => {
+    const leftRoom = regionFromBox([500, 400, 800, 900], "left")!;
+    expect(leftRoom.cleanPlate.x + leftRoom.cleanPlate.w).toBeLessThanOrEqual(0.4);
+    expect(inside(leftRoom.cleanPlate)).toBe(true);
+    const rightRoom = regionFromBox([500, 50, 800, 500], "right")!;
+    expect(rightRoom.cleanPlate.x).toBeGreaterThanOrEqual(0.5);
+    expect(inside(rightRoom.cleanPlate)).toBe(true);
+  });
+
+  it("handles boxes at the image border and clamps out-of-frame coordinates", () => {
+    const atBottomLeft = regionFromBox([700, 0, 1000, 450], "left")!;
+    expect(atBottomLeft.box.x).toBe(0);
+    expect(atBottomLeft.box.y + atBottomLeft.box.h).toBeCloseTo(1);
+    expect(inside(atBottomLeft.cleanPlate)).toBe(true);
+    expect(atBottomLeft.cleanPlate.x).toBeGreaterThanOrEqual(0.45);
+    const atTop = regionFromBox([0, 300, 250, 700], "right")!;
+    expect(atTop.cleanPlate.y).toBe(0);
+    expect(inside(atTop.cleanPlate)).toBe(true);
+  });
+
+  it("returns null for tiny boxes and for a product filling the frame width (no guessed region)", () => {
+    const tiny = MIN_BOX_SIDE * 1000 - 1;
+    expect(regionFromBox([500, 500, 500 + tiny, 700], "left")).toBeNull();
+    expect(regionFromBox([500, 500, 700, 500 + tiny], "left")).toBeNull();
+    expect(regionFromBox([100, 10, 900, 990], "left")).toBeNull();
+  });
+
+  it("roughly overlaps the hand-measured demo vacuum geometry for a box of that product", () => {
+    // The measured vacuum box, as box_2d, lands on the same place. The live Gemini box for the demo
+    // photo is compared against DEMO_VACUUM_REGION in the live check (reported, not asserted here).
+    const b = DEMO_VACUUM_REGION.box;
+    const box2d = [b.y, b.x, b.y + b.h, b.x + b.w].map((v) => Math.round(v * 1000)) as [
+      number,
+      number,
+      number,
+      number,
+    ];
+    const region = regionFromBox(box2d, "left")!;
+    expect(rectIoU(region.box, DEMO_VACUUM_REGION.box)).toBeGreaterThan(0.95);
+    expect(region.forward).toEqual(DEMO_VACUUM_REGION.forward);
+    expect(rectIoU(region.cleanPlate, region.box)).toBe(0);
+    expect(buildMotionProgram(action(), region, "problem")).not.toBeNull();
   });
 });

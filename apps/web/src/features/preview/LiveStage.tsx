@@ -201,6 +201,7 @@ export function LiveStage(props: LiveStageProps) {
         purposeLabel={PURPOSE_LABELS[selectedTake?.purpose ?? props.purpose]}
         showLiveVideo={showLiveVideo}
         isLive={showLiveVideo}
+        motionGuide={session.motionGuide === "active" && !selectedTake}
         take={
           selectedTake
             ? {
@@ -240,6 +241,15 @@ export function LiveStage(props: LiveStageProps) {
         clipHint={clipHint}
         canReplay={canReplay}
         notice={cv.notice ?? session.notice}
+        guideNotice={
+          takeMode
+            ? null
+            : session.motionGuide === "unavailable"
+              ? { text: LIVE_COPY.guideUnavailable, onRetry: () => controller.retryMotionGuide() }
+              : session.motionGuide === "no_room"
+                ? { text: LIVE_COPY.guideNoRoom, onRetry: null }
+                : null
+        }
         readout={
           sessionActive && !takeMode
             ? {

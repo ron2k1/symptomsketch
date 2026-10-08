@@ -5,11 +5,13 @@ import {
   type ReactorTokenResponse,
   type SelectedAction,
 } from "@symptomsketch/contracts";
-import { createReactorToken } from "@/lib/api";
+import { createReactorToken, getProductBox } from "@/lib/api";
 import { newClientRequestId } from "@/lib/ids";
 import { heartbeatLease, loadReference, releaseLease, releaseLeaseKeepalive } from "./lease";
 import { LIVE_COPY, LIVE_POLICY, evaluateLivePolicy, reconnectDelayMs } from "./live-policy";
 import { STAGE_ERRORS, STOP_NOTICES, stageErrorFrom, type StageError } from "./preview-errors";
+import type { ProductRegion } from "./motion-sketch";
+import { regionFromBox } from "./product-region";
 import { PreviewFailure, X2Preview, type FreshFrame } from "./x2-preview";
 import { EMPTY_STATS, type LiveStats } from "./x2-stats";
 
@@ -38,6 +40,21 @@ export interface SessionView {
   hidden: boolean;
   /** Measured numbers for the stage readout (null = not measured). */
   stats: LiveStats;
+  /**
+   * Motion guide: "active" while the app moves the Gemini-found product on the X2 source;
+   * "unavailable" when Gemini found no product box (Retry asks again); "no_room" when the box is
+   * too small or leaves no background to fill the vacated area. Null otherwise.
+   */
+  motionGuide: MotionGuide;
+}
+
+export type MotionGuide = "active" | "unavailable" | "no_room" | null;
+
+/** Product region per case reference: null region with `state` when there is none to move. */
+interface GuideCache {
+  key: string;
+  region: ProductRegion | null;
+  state: MotionGuide;
 }
 
 const STOPPED = {
@@ -46,6 +63,7 @@ const STOPPED = {
   outputSince: null,
   startedAt: null,
   stats: EMPTY_STATS,
+  motionGuide: null,
 } as const satisfies Partial<SessionView>;
 
 export const INITIAL_SESSION_VIEW: SessionView = {
@@ -151,6 +169,7 @@ export class PreviewController {
   private seq = 0;
   private hiddenSince: number | null = null;
   private reference: { url: string; blob: Blob; still: ImageBitmap } | null = null;
+  private guide: GuideCache | null = null;
   private pendingPrompt: PendingPrompt | null = null;
   private queuedPlanId: string | null = null;
   private frameWaiter: { accept: (f: FreshFrame) => boolean; resolve: () => void } | null = null;
@@ -270,6 +289,38 @@ export class PreviewController {
     if (this.view.notice) this.update({ notice: null });
   }
 
+  /** Ask Gemini for the product box again; a running preview reconnects to use it. */
+  retryMotionGuide(): void {
+    this.guide = null;
+    this.update({ motionGuide: null });
+    if (this.run) this.reconnect(this.run, "rotate");
+  }
+
+  /**
+   * Product region for the motion guide, from the Gemini product box (cached per case reference,
+   * failures included, so rotations do not re-ask; Retry clears it). Never a guessed region.
+   */
+  private async regionFor(caseId: string, referenceUrl: string): Promise<GuideCache> {
+    const key = `${caseId}|${referenceUrl}`;
+    if (this.guide?.key === key) return this.guide;
+    let guide: GuideCache;
+    try {
+      const box = await getProductBox(caseId);
+      const region = regionFromBox(box.box2d, box.facing);
+      guide = { key, region, state: region ? null : "no_room" };
+    } catch {
+      guide = { key, region: null, state: "unavailable" };
+    }
+    this.guide = guide;
+    return guide;
+  }
+
+  /** Label state once a connection's motion program is known. */
+  private guideState(conn: Connection): MotionGuide {
+    if (!this.guide || !this.guide.region) return this.guide?.state ?? null;
+    return conn.preview.motionProgram ? "active" : null;
+  }
+
   /** The running preview a clip can be recorded from. */
   getActive(): ActiveSession | null {
     const run = this.run;
@@ -320,6 +371,8 @@ export class PreviewController {
     const attempt = ++run.attempt;
     const current = () => this.run === run && run.attempt === attempt;
     const openedAt = performance.now();
+    const guide = await this.regionFor(run.caseId, run.referenceUrl);
+    if (!current()) return;
     let token: ReactorTokenResponse;
     try {
       token = await createReactorToken(run.caseId, {
@@ -354,10 +407,10 @@ export class PreviewController {
     this.wire(run, conn);
 
     try {
-      await conn.preview.connect(token.jwt, run.still, actionOf(plan), plan.purpose);
+      await conn.preview.connect(token.jwt, run.still, actionOf(plan), plan.purpose, guide.region);
       if (run.conn !== conn) return;
       conn.connected = true;
-      this.update({ status: "waiting_frames" });
+      this.update({ status: "waiting_frames", motionGuide: this.guideState(conn) });
       await conn.preview.prepareRun(run.referenceBlob);
       if (run.conn !== conn) return;
       await conn.preview.fire(token.reactorPrompt);
@@ -527,6 +580,7 @@ export class PreviewController {
         // Replay, and any change on a sketched product, starts a fresh run from the still.
         if (next.replay || conn.preview.sketches(next.action)) {
           if (!(await this.restartRun(run, conn, next))) return;
+          this.update({ motionGuide: this.guideState(conn) });
           continue;
         }
         const ok = await conn.preview.correct(next.prompt, next.action);

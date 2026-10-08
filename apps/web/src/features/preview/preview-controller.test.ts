@@ -48,6 +48,7 @@ const h = vi.hoisted(() => {
     instances,
     FakePreview,
     createReactorToken: vi.fn(),
+    getProductBox: vi.fn(),
     heartbeatLease: vi.fn(async () => "ok"),
     releaseLease: vi.fn(),
     loadReference: vi.fn(async () => ({
@@ -64,6 +65,7 @@ vi.mock("./x2-preview", async (orig) => ({
 vi.mock("@/lib/api", async (orig) => ({
   ...(await orig<typeof import("@/lib/api")>()),
   createReactorToken: h.createReactorToken,
+  getProductBox: h.getProductBox,
 }));
 vi.mock("./lease", () => ({
   heartbeatLease: h.heartbeatLease,
@@ -117,6 +119,12 @@ describe("PreviewController (infinite live preview)", () => {
     h.instances.length = 0;
     vi.clearAllMocks();
     h.createReactorToken.mockResolvedValue(TOKEN);
+    // Test-only box (labeled stub; the live box comes from Gemini).
+    h.getProductBox.mockResolvedValue({
+      assetId: "a1",
+      box2d: [548, 300, 870, 764],
+      facing: "left",
+    });
     h.heartbeatLease.mockResolvedValue("ok");
     vi.useFakeTimers({
       toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date", "performance"],
@@ -124,6 +132,36 @@ describe("PreviewController (infinite live preview)", () => {
   });
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("no Gemini product box: connects without a region, says so, and Retry asks again", async () => {
+    h.getProductBox.mockRejectedValueOnce(new Error("PROVIDER_FAILED"));
+    const c = new PreviewController(() => undefined);
+    c.setProps({ caseId: "case_1", plan: plan("plan_1", "prompt one"), referenceImageUrl: "/ref" });
+    await c.start(video);
+    expect(h.instances[0]!.connect).toHaveBeenCalledWith(
+      "test-jwt-not-real",
+      expect.anything(),
+      null,
+      "problem",
+      null,
+    );
+    expect(c.current.motionGuide).toBe("unavailable");
+    expect(h.getProductBox).toHaveBeenCalledTimes(1);
+
+    c.retryMotionGuide();
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(h.getProductBox).toHaveBeenCalledTimes(2);
+    const last = h.instances.at(-1)!;
+    expect(last.connect).toHaveBeenCalledWith(
+      "test-jwt-not-real",
+      expect.anything(),
+      null,
+      "problem",
+      expect.objectContaining({ box: expect.anything() }),
+    );
+    expect(c.current.motionGuide).not.toBe("unavailable");
+    await c.stop("user");
   });
 
   it("does nothing until start(); then token -> connect -> reference -> prompt -> live", async () => {
@@ -144,6 +182,7 @@ describe("PreviewController (infinite live preview)", () => {
       expect.anything(),
       null,
       "problem",
+      expect.objectContaining({ center: { x: expect.closeTo(0.532), y: expect.closeTo(0.709) } }),
     );
     expect(preview.prepareRun).toHaveBeenCalledTimes(1);
     expect(preview.fire).toHaveBeenCalledWith("server compiled prompt one");
@@ -189,6 +228,7 @@ describe("PreviewController (infinite live preview)", () => {
       expect.anything(),
       action("backward"),
       "solution",
+      expect.objectContaining({ forward: expect.objectContaining({ x: -1 }) }),
     );
     preview.frame(1, true);
     c.setProps({

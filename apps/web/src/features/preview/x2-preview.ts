@@ -7,7 +7,6 @@ import {
   type MotionProgram,
   type ProductRegion,
 } from "./motion-sketch";
-import { detectProductRegion } from "./product-region";
 import { createStillSource, type StillSource } from "./source-canvas";
 import { linkStatsFrom, type LinkStats, type StatsSample } from "./x2-stats";
 
@@ -183,13 +182,15 @@ export class X2Preview {
 
   /**
    * jwt: the static string from POST /api/cases/:id/reactor-token. Resolves once the source is live.
-   * `action` (plan.selectedAction) selects the motion sketch when the product region is known.
+   * `action` (plan.selectedAction) selects the motion sketch when the product `region` (from the
+   * Gemini product box) is known; without one X2 restyles the plain still.
    */
   async connect(
     jwt: string,
     still: StillImage,
     action: SelectedAction | null = null,
     purpose: Purpose = "problem",
+    region: ProductRegion | null = null,
   ): Promise<void> {
     this.purpose = purpose; // a case is one purpose for its whole session
     try {
@@ -199,7 +200,7 @@ export class X2Preview {
     }
     if (this.closed) throw new PreviewFailure("ABORTED", "connect");
     if (this.x2.getStatus() !== "ready") throw new PreviewFailure("INVALID_STATE", "connect");
-    this.region = detectProductRegion();
+    this.region = region;
     this.motion = buildMotionProgram(action, this.region, this.purpose);
     this.source = createStillSource(still, this.region);
     try {
