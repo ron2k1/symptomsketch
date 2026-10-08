@@ -73,3 +73,37 @@ export type CreateProductRevisionResponse = z.infer<typeof CreateProductRevision
  */
 export const UploadAssetResult = UploadAssetResponse.extend({ product: ProductRevision });
 export type UploadAssetResult = z.infer<typeof UploadAssetResult>;
+
+/** One box_2d coordinate: Gemini normalizes to 0..1000 of the image (docs/providers/gemini.md). */
+const BoxCoord = z.number().min(0).max(1000);
+
+/**
+ * Gemini object-detection box for the product in the case's reference image:
+ * [ymin, xmin, ymax, xmax] normalized to 0..1000. A degenerate (empty) box is rejected.
+ */
+export const Box2d = z
+  .tuple([BoxCoord, BoxCoord, BoxCoord, BoxCoord])
+  .refine(([ymin, xmin, ymax, xmax]) => ymax > ymin && xmax > xmin, {
+    message: "box_2d must have ymax > ymin and xmax > xmin",
+  });
+export type Box2d = z.infer<typeof Box2d>;
+
+/** Which way the product's front points in the photo (screen space). */
+export const ProductFacing = z.enum(["left", "right"]);
+export type ProductFacing = z.infer<typeof ProductFacing>;
+
+/** Raw structured output of the product-box Gemini call (validated before anything is cached). */
+export const GeminiProductBox = z.discriminatedUnion("found", [
+  z.object({ found: z.literal(true), box_2d: Box2d, facing: ProductFacing }),
+  z.object({ found: z.literal(false) }).passthrough(),
+]);
+export type GeminiProductBox = z.infer<typeof GeminiProductBox>;
+
+/** GET /api/cases/:id/product-box: where the product sits in the current reference image. */
+export const ProductBoxResponse = z.object({
+  /** Normalized reference asset the box was measured on (the cache key). */
+  assetId: Id,
+  box2d: Box2d,
+  facing: ProductFacing,
+});
+export type ProductBoxResponse = z.infer<typeof ProductBoxResponse>;
