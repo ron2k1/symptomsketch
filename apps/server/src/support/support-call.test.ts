@@ -193,7 +193,13 @@ test("brief: Gemini writes the call package once per ticket from the case facts"
   const pkg = first.body.package;
   assert.ok(pkg.persona.startsWith(SUPPORT_CALL_PERSONA_OPENER));
   assert.ok(pkg.persona.endsWith(CALL_GROUND_RULES), "server appends the fixed ground rules");
-  assert.ok(pkg.greeting.length <= 200);
+  assert.match(CALL_GROUND_RULES, /never the customer/);
+  // Vidu hands start_call.greeting to the character's LLM as its first cue: a bare spoken line was
+  // answered as if the customer had said it, so the line goes out wrapped as a direction.
+  assert.equal(
+    pkg.greeting,
+    `Open the call by saying: "Hi, I'm Sam, an AI support agent. I watched your clip. When does it jerk backward?"`,
+  );
   assert.equal(first.body.modelId, "stub-text-model");
   assert.equal(first.body.avatarId, null);
   assert.equal(first.body.portraitUrl, paths.ticketSupportCallPortrait(ticket.id));
@@ -238,10 +244,43 @@ test("brief: a persona without the AI opener is prefixed and an overlong greetin
     );
     assert.equal(res.status, 200);
     assert.ok(res.body.package.persona.startsWith(`${SUPPORT_CALL_PERSONA_OPENER}. Help`));
-    assert.ok(res.body.package.greeting.length <= 200);
+    const cue = res.body.package.greeting;
+    assert.ok(cue.length <= 200, `cue length ${cue.length}`);
+    assert.ok(cue.startsWith('Open the call by saying: "Hello there. I watched your clip'));
+    assert.ok(cue.endsWith('can help."'), "clipped at a sentence, quote closed");
   } finally {
     briefReply = saved;
   }
+});
+
+test("brief: a package cached before the greeting cue is written again", async () => {
+  const ticket = await submitTicket();
+  const ts = new Date().toISOString();
+  h.ctx.db
+    .prepare(
+      `INSERT INTO ticket_support_calls (ticket_id, persona, greeting, brief_model_id, avatar_id,
+         created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      ticket.id,
+      `${SUPPORT_CALL_PERSONA_OPENER}. Old persona.`,
+      "Hi, I'm Sam.",
+      "old",
+      "av_9",
+      ts,
+      ts,
+    );
+  const before = briefRequests.length;
+  const res = await call<SupportCallBriefResponse>(
+    h.base,
+    "POST",
+    paths.ticketSupportCallBrief(ticket.id),
+    { cookie: alice.cookie },
+  );
+  assert.equal(res.status, 200);
+  assert.equal(briefRequests.length, before + 1);
+  assert.ok(res.body.package.greeting.startsWith("Open the call by saying:"));
+  assert.equal(res.body.avatarId, "av_9", "the saved avatar survives the rewrite");
 });
 
 test("brief: a provider failure is a bounded error and nothing is cached", async () => {

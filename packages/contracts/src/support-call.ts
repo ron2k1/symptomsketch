@@ -52,6 +52,7 @@ export type SupportCallTokenResponse = z.infer<typeof SupportCallTokenResponse>;
 /** What start_call receives. Written once per ticket by Gemini and cached server-side. */
 export const SupportCallPackage = z.object({
   persona: z.string().min(1).max(LIMITS.supportCallPersonaMaxChars),
+  /** A cue for the character's first turn (`Open the call by saying: "..."`), not verbatim TTS. */
   greeting: z.string().min(1).max(LIMITS.supportCallGreetingMaxChars),
 });
 export type SupportCallPackage = z.infer<typeof SupportCallPackage>;
