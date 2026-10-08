@@ -120,7 +120,9 @@ interface Lead {
 function actionLead(plan: ActionPlan, subject: string): Lead {
   const a = plan.selectedAction;
   const action = cleanField(a.action, FIELD_CAP.action);
-  const actor = plan.purpose === "problem" && productIsActor(action);
+  // Imperative solution steps ("Press the start button once") fail productIsActor and stay neutral;
+  // a step where the product itself moves ("drives forward") needs the motion-first lead too.
+  const actor = productIsActor(action);
   const parts: string[] = [
     actor ? `The ${subject} ${lowerFirst(action)}` : `Action: ${upperFirst(action)}`,
   ];
@@ -179,12 +181,11 @@ export function compileReactorPrompt(plan: ActionPlan, product: PromptProduct): 
       : "";
 
   const lead = actionLead(plan, subject);
-  const only =
-    plan.purpose === "solution"
+  const only = lead.moves
+    ? "It is the only thing that moves"
+    : plan.purpose === "solution"
       ? "Only this one step happens"
-      : lead.moves
-        ? "It is the only thing that moves"
-        : "Only this action happens";
+      : "Only this action happens";
   const identity = (withFeatures: boolean) =>
     `${only}; it stays identical to the reference image${
       withFeatures && features ? `, with ${features}` : ""

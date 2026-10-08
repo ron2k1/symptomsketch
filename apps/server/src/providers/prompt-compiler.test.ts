@@ -213,13 +213,31 @@ test("drone hover solution step does not ask for a movement", () => {
   const prompt = compileReactorPrompt(solutionPlan(hover), product);
   assert.match(
     prompt,
-    /^Product: the white quadcopter camera drone with landing legs\. Action: Holds one spot in the air, level, without drifting sideways or bobbing up and down, timing: for a few seconds\. /,
+    /^The white quadcopter camera drone with landing legs holds one spot in the air, level, without drifting sideways or bobbing up and down, timing: for a few seconds\. /,
   );
   assert.equal(prompt.includes("clearly visible movement"), false);
   assert.match(prompt, /Only this one step happens/);
   // Even as a problem plan with a direction, the negated drift is not turned into a movement.
   const asProblem = compileReactorPrompt(demoPlan({ ...hover, direction: "sideways" }), product);
   assert.equal(asProblem.includes("clearly visible movement"), false);
+});
+
+test("a solution step where the product travels gets the motion-first lead", () => {
+  const prompt = compileReactorPrompt(
+    solutionPlan({
+      action: "drives forward in a straight line",
+      direction: "forward",
+      magnitude: "short way",
+      timing: null,
+    }),
+    product,
+  );
+  assert.match(
+    prompt,
+    /drives forward in a straight line, exactly once: a clearly visible movement/,
+  );
+  assert.match(prompt, /It is the only thing that moves/);
+  assert.equal(prompt.startsWith("Product:"), false);
 });
 
 test("an imperative solution step is not written with the product as the actor", () => {
@@ -290,7 +308,6 @@ test("solution prompt includes setup prerequisites; problem prompt never does", 
     prerequisites: ["front bumper facing open space"],
   };
   assert.match(compileReactorPrompt(solution, product), /Setup: front bumper facing open space\./);
-  assert.match(compileReactorPrompt(solution, product), /Only this one step happens/);
   const problem = { ...demoPlan(), prerequisites: ["should never appear"] };
   assert.equal(compileReactorPrompt(problem, product).includes("should never appear"), false);
 });
