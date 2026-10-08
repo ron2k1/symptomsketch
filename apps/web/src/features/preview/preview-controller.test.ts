@@ -316,6 +316,39 @@ describe("PreviewController (infinite live preview)", () => {
     expect(h.createReactorToken).toHaveBeenCalledTimes(3);
   });
 
+  it("keeps rotating with the plan on screen while a clarification question waits", async () => {
+    const { c, preview } = await startLive();
+    // The workspace passes no plan while the current revision needs an answer.
+    c.setProps({ caseId: "case_1", plan: null, referenceImageUrl: "/ref" });
+    h.createReactorToken.mockResolvedValueOnce({ ...TOKEN, leaseId: "lease_2" });
+    await vi.advanceTimersByTimeAsync(5 * MIN - 19_000); // past 4:40
+    expect(preview.close).toHaveBeenCalledTimes(1);
+    expect(h.createReactorToken).toHaveBeenCalledTimes(2);
+    expect(h.createReactorToken).toHaveBeenLastCalledWith(
+      "case_1",
+      expect.objectContaining({ planRevisionId: "plan_1" }),
+    );
+    h.instances.at(-1)!.frame(1, true);
+    expect(c.current).toMatchObject({ status: "live", activePlanId: "plan_1", error: null });
+  });
+
+  it("fails visibly when the plan stops being ready before the first prompt", async () => {
+    let loaded: (ref: { blob: Blob; still: ImageBitmap }) => void = () => undefined;
+    h.loadReference.mockReturnValueOnce(
+      new Promise((resolve) => {
+        loaded = resolve;
+      }),
+    );
+    const c = new PreviewController(() => undefined);
+    c.setProps({ caseId: "case_1", plan: plan("plan_1", "prompt one"), referenceImageUrl: "/ref" });
+    const starting = c.start(video);
+    c.setProps({ caseId: "case_1", plan: null, referenceImageUrl: "/ref" });
+    loaded({ blob: new Blob(["ref"], { type: "image/jpeg" }), still: {} as ImageBitmap });
+    await starting;
+    expect(h.createReactorToken).not.toHaveBeenCalled();
+    expect(c.current).toMatchObject({ status: "error", error: STAGE_ERRORS.planNotReady });
+  });
+
   it("reconnects automatically after a provider drop and reapplies the current plan", async () => {
     const { c, preview } = await startLive();
     c.setProps({ caseId: "case_1", plan: plan("plan_2", "prompt two"), referenceImageUrl: "/ref" });

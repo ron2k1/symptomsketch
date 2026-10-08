@@ -38,6 +38,10 @@ export const STAGE_ERRORS = {
   disconnected: { title: TITLE, detail: CAPTURE_REASON_LABELS.disconnected },
   moderated: { title: TITLE, detail: ERROR_COPY.PROVIDER_BLOCKED },
   referenceLoad: { title: TITLE, detail: "The product photo could not be loaded for the preview." },
+  planNotReady: {
+    title: TITLE,
+    detail: "The plan changed before the preview started. Start it again once the plan is ready.",
+  },
   recordingTooLarge: { title: "The take could not be saved", detail: ERROR_COPY.PAYLOAD_TOO_LARGE },
 } as const satisfies Record<string, StageError>;
 

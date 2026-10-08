@@ -14,7 +14,7 @@ import {
   releaseLease,
   updateLease,
 } from "../domain/leases.ts";
-import { currentPlanId, getPlanRow, requireOwnedActiveCase } from "../domain/plans.ts";
+import { getPlanRow, previewPlanId, requireOwnedActiveCase } from "../domain/plans.ts";
 import { AppError } from "../http/errors.ts";
 import { requireCustomerAccess } from "../http/session.ts";
 import { param, parseBody } from "../http/validate.ts";
@@ -33,8 +33,9 @@ export function setReactorMinterFor(ctx: AppContext, minter: Minter): void {
 
 /**
  * POST ROUTES.caseReactorToken  ReactorTokenRequest -> ReactorTokenResponse
- *   Owned active case + a ready plan that is the current pointer for its purpose + a free live
- *   slot. One max_sessions=1 JWT per call. The JWT is never logged or stored.
+ *   Owned active case + a ready plan that is the current pointer for its purpose (or, while a
+ *   newer revision waits on a clarification, its newest ready ancestor) + a free live slot. One
+ *   max_sessions=1 JWT per call. The JWT is never logged or stored.
  * POST ROUTES.casePreviewLease  PreviewLeaseRequest -> PreviewLeaseResponse (heartbeat/release)
  */
 export function register(router: Router, ctx: AppContext): void {
@@ -48,7 +49,7 @@ export function register(router: Router, ctx: AppContext): void {
       throw new AppError("VALIDATION_FAILED", "Finish the plan before starting the preview.", 409);
     }
     if (
-      currentPlanId(kase, plan.purpose) !== plan.id ||
+      previewPlanId(ctx.db, kase, plan.purpose) !== plan.id ||
       plan.product_revision_id !== kase.product_revision_id
     ) {
       throw new AppError("PLAN_CONFLICT");

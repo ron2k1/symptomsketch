@@ -305,11 +305,19 @@ export class PreviewController {
     return loaded;
   }
 
-  /** Token + lease, then connect -> reference -> prompt with the newest ready plan. */
+  /**
+   * Token + lease, then connect -> reference -> prompt with the newest ready plan. While the current
+   * plan waits on a clarification the server still accepts the plan on screen (its newest ready
+   * ancestor), so rotations and reconnects keep using it.
+   */
   private async open(run: Run): Promise<void> {
     const latest = this.props?.plan ?? null;
     const plan = isReadyPlan(latest) ? latest : run.activePlan;
-    if (!plan) return;
+    if (!plan) {
+      // Nothing ever fired and no plan is ready: say so instead of waiting forever.
+      await this.fail(STAGE_ERRORS.planNotReady);
+      return;
+    }
     const attempt = ++run.attempt;
     const current = () => this.run === run && run.attempt === attempt;
     const openedAt = performance.now();
